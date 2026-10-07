@@ -13,14 +13,14 @@ signal navigate(scene_path)
 # ============================================================
 
 # Single source of truth for creature stats. The codex screens and the
-# game both read from here. color / size / shape are placeholder visuals
-# until each creature gets real sprites.
+# game both read from here. "sprite" is the creature's art (its glow
+# layer is <name>_glow.png); "size" scales its collision and weight.
 const CREATURES = [
 	# ---- Emberwood (prototype) ----
-	{"name": "Ember Wolf", "description": "A mysterious creature said to roam the outer valleys of Embervale.", "type": "Beast", "health": 80, "attack": 18, "defense": 12, "speed": 20, "rarity": "Uncommon", "drop": "Ember Fang", "color": Color(0.9, 0.35, 0.1), "size": 1.0, "shape": "capsule"},
-	{"name": "Mossling", "description": "A small bundle of living moss that wanders the Emberwood floor. Harmless, until something frightens it.", "type": "Nature", "health": 50, "attack": 10, "defense": 18, "speed": 12, "rarity": "Common", "drop": "Moss Fiber", "color": Color(0.3, 0.6, 0.3), "size": 0.8, "shape": "blob"},
-	{"name": "Ashcrawler", "description": "A low, armoured beast with embers smouldering between its plates. It is rarely seen outside the Deep Forest.", "type": "Beast", "health": 110, "attack": 22, "defense": 8, "speed": 10, "rarity": "Rare", "drop": "Ash Core", "color": Color(0.22, 0.2, 0.2), "glow": Color(1.0, 0.35, 0.05), "size": 1.1, "shape": "crawler"},
-	{"name": "The Ashbound", "description": "Something vast and burning, chained to the heart of Emberwood. The creatures are not fleeing the forest. They are fleeing it.", "type": "Abomination", "health": 600, "attack": 34, "defense": 20, "speed": 14, "rarity": "Legendary", "drop": "", "color": Color(0.12, 0.1, 0.1), "glow": Color(1.0, 0.3, 0.0), "size": 3.2, "shape": "capsule", "boss": true},
+	{"name": "Ember Wolf", "description": "A mysterious creature said to roam the outer valleys of Embervale.", "type": "Beast", "health": 80, "attack": 18, "defense": 12, "speed": 20, "rarity": "Uncommon", "drop": "Ember Fang", "sprite": "res://Creatures/ember_wolf.png", "size": 1.0},
+	{"name": "Mossling", "description": "A small bundle of living moss that wanders the Emberwood floor. Harmless, until something frightens it.", "type": "Nature", "health": 50, "attack": 10, "defense": 18, "speed": 12, "rarity": "Common", "drop": "Moss Fiber", "sprite": "res://Creatures/mossling.png", "size": 0.8},
+	{"name": "Ashcrawler", "description": "A low, armoured beast with embers smouldering between its plates. It is rarely seen outside the Deep Forest.", "type": "Beast", "health": 110, "attack": 22, "defense": 8, "speed": 10, "rarity": "Rare", "drop": "Ash Core", "sprite": "res://Creatures/ashcrawler.png", "size": 1.1},
+	{"name": "The Ashbound", "description": "Something vast and burning, chained to the heart of Emberwood. The creatures are not fleeing the forest. They are fleeing it.", "type": "Abomination", "health": 600, "attack": 34, "defense": 20, "speed": 14, "rarity": "Legendary", "drop": "", "sprite": "res://Creatures/ashbound.png", "size": 3.2, "boss": true},
 
 	# ---- Rest of Embervale (codex lore, not in the prototype yet) ----
 	{"name": "Ashfang", "description": "A fierce beast that hunts beneath the ancient forests of Embervale.", "type": "Beast", "health": 100, "attack": 24, "defense": 16, "speed": 18, "rarity": "Rare"},

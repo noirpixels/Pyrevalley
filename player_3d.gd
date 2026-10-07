@@ -37,6 +37,10 @@ var zoom_state: int = 1
 
 var current_zoom: float = 5.0
 
+# Pull the camera back during the boss fight so The Ashbound fits on screen
+@export var boss_fight_zoom: float = 7.5
+var zoom_before_boss: float = -1.0
+
 @export_group("Combat")
 @export var max_health: float = 100.0
 # Total ATK = base_attack + equipped weapon's attack (see GameState.ITEMS)
@@ -116,6 +120,9 @@ func _ready():
 		spring_arm.add_excluded_object(get_rid())
 
 	apply_camera_preset(zoom_state, true)
+
+	GameState.boss_engaged.connect(_on_boss_engaged)
+	GameState.boss_disengaged.connect(_on_boss_disengaged)
 
 
 # ============================================================
@@ -551,3 +558,17 @@ func update_interact_target():
 	if best != interact_target:
 		interact_target = best
 		interact_target_changed.emit(best)
+
+
+func _on_boss_engaged(_boss):
+
+	if zoom_before_boss < 0.0:
+		zoom_before_boss = current_zoom
+	current_zoom = max(current_zoom, boss_fight_zoom)
+
+
+func _on_boss_disengaged():
+
+	if zoom_before_boss >= 0.0:
+		current_zoom = zoom_before_boss
+		zoom_before_boss = -1.0

@@ -14,6 +14,8 @@ const ItemPickup = preload("res://item_pickup.gd")
 const EmberPickup = preload("res://ember_pickup.gd")
 
 const PLAYER_RADIUS = 2.5
+# Same pixel density as Veyl's sprite (216 px = 8.1 units)
+const SPRITE_PIXEL_SIZE = 0.0375
 
 # Behaviour tuning (boss.gd overrides some of these)
 var detect_range: float = 18.0
@@ -48,10 +50,14 @@ var flash_timer: float = 0.0
 var wander_dir: Vector3 = Vector3.ZERO
 var wander_timer: float = 0.0
 var facing: Vector3 = Vector3.FORWARD
+var anim_time: float = 0.0
 
-var pivot: Node3D
-var body_mesh: MeshInstance3D
-var material: StandardMaterial3D
+var body_texture: Texture2D
+var sprite: Sprite3D
+var glow_sprite: Sprite3D
+var sprite_base_y: float
+var sprite_scale: Vector2 = Vector2.ONE
+var glow_strength: float = 1.0
 var label: Label3D
 var alert_label: Label3D
 
@@ -71,10 +77,10 @@ func setup(creature: Dictionary, id: String = ""):
 	# Codex speed (6-40) -> world units per second
 	move_speed = 1.5 + creature["speed"] * 0.2
 
+	# Collision is a cylinder roughly the size of the sprite
+	body_texture = load(creature["sprite"])
 	radius = 1.4 * creature["size"]
-	height = 4.0 * creature["size"]
-	if creature["shape"] == "crawler":
-		height *= 0.55
+	height = body_texture.get_height() * SPRITE_PIXEL_SIZE * 0.9
 
 
 func _ready():
@@ -86,7 +92,7 @@ func _ready():
 
 
 # ============================================================
-# PLACEHOLDER BODY
+# BODY (painted sprite + unshaded glow layer)
 # ============================================================
 
 func build_body():
@@ -99,52 +105,52 @@ func build_body():
 	collision.shape = shape
 	add_child(collision)
 
-	# Pivot turns to face where the creature is heading
-	pivot = Node3D.new()
-	add_child(pivot)
+	var visual_height = body_texture.get_height() * SPRITE_PIXEL_SIZE
+	var visual_width = body_texture.get_width() * SPRITE_PIXEL_SIZE
 
-	material = StandardMaterial3D.new()
-	material.albedo_color = data["color"]
-	if data.has("glow"):
-		material.emission_enabled = true
-		material.emission = data["glow"]
-		material.emission_energy_multiplier = 0.4
+	# Soft blob shadow grounds the billboard
+	var shadow_mesh = CylinderMesh.new()
+	shadow_mesh.top_radius = visual_width * 0.38
+	shadow_mesh.bottom_radius = visual_width * 0.38
+	shadow_mesh.height = 0.02
+	var shadow_mat = StandardMaterial3D.new()
+	shadow_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	shadow_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	shadow_mat.albedo_color = Color(0, 0, 0, 0.35)
+	var shadow = MeshInstance3D.new()
+	shadow.mesh = shadow_mesh
+	shadow.material_override = shadow_mat
+	shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	shadow.scale = Vector3(1.0, 1.0, 0.55)
+	shadow.position.y = -height / 2.0 + 0.05
+	add_child(shadow)
 
-	body_mesh = MeshInstance3D.new()
-	body_mesh.material_override = material
+	# Feet sit on the bottom of the collision cylinder
+	sprite_base_y = -height / 2.0 + visual_height / 2.0
 
-	match data["shape"]:
-		"blob":
-			var sphere = SphereMesh.new()
-			sphere.radius = radius
-			sphere.height = height
-			body_mesh.mesh = sphere
-		"crawler":
-			var box = BoxMesh.new()
-			box.size = Vector3(radius * 1.6, height, radius * 2.4)
-			body_mesh.mesh = box
-		_:
-			var capsule = CapsuleMesh.new()
-			capsule.radius = radius
-			capsule.height = height
-			body_mesh.mesh = capsule
+	sprite = Sprite3D.new()
+	sprite.texture = body_texture
+	sprite.pixel_size = SPRITE_PIXEL_SIZE
+	sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+	sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+	sprite.shaded = true
+	sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	sprite.position.y = sprite_base_y
+	add_child(sprite)
 
-	pivot.add_child(body_mesh)
-
-	# Glowing eyes show which way it's facing
-	var eye_mat = StandardMaterial3D.new()
-	eye_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	eye_mat.albedo_color = data.get("glow", Color(1.0, 0.85, 0.4))
-
-	for side in [-1, 1]:
-		var eye = MeshInstance3D.new()
-		var eye_mesh = SphereMesh.new()
-		eye_mesh.radius = 0.15 * data["size"]
-		eye_mesh.height = 0.3 * data["size"]
-		eye.mesh = eye_mesh
-		eye.material_override = eye_mat
-		eye.position = Vector3(side * radius * 0.35, height * 0.2, -radius * 0.95)
-		pivot.add_child(eye)
+	# Eyes, embers and cracks: unshaded so they glow in the dark forest
+	var glow_path = data["sprite"].replace(".png", "_glow.png")
+	if ResourceLoader.exists(glow_path):
+		glow_sprite = Sprite3D.new()
+		glow_sprite.texture = load(glow_path)
+		glow_sprite.pixel_size = SPRITE_PIXEL_SIZE
+		glow_sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		glow_sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
+		glow_sprite.shaded = false
+		glow_sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		glow_sprite.render_priority = 1
+		sprite.add_child(glow_sprite)
 
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -153,7 +159,7 @@ func build_body():
 	label.pixel_size = 0.025
 	label.outline_size = 12
 	label.modulate = CodexData.RARITY_COLORS.get(data["rarity"], Color.WHITE)
-	label.position.y = height / 2.0 + 1.5
+	label.position.y = -height / 2.0 + visual_height + 1.0
 	label.visible = false
 	add_child(label)
 
@@ -165,7 +171,7 @@ func build_body():
 	alert_label.pixel_size = 0.03
 	alert_label.outline_size = 16
 	alert_label.modulate = Color(1.0, 0.8, 0.2)
-	alert_label.position.y = height / 2.0 + 3.5
+	alert_label.position.y = -height / 2.0 + visual_height + 3.0
 	alert_label.visible = false
 	add_child(alert_label)
 
@@ -355,9 +361,13 @@ func die():
 	drop_loot()
 	died.emit(self)
 
+	# Collapse into ash
 	var tween = create_tween().set_parallel()
-	tween.tween_property(pivot, "scale", Vector3(1.3, 0.05, 1.3), 0.35)
-	tween.tween_property(material, "albedo_color", Color(0.05, 0.05, 0.05), 0.35)
+	tween.tween_property(sprite, "scale", Vector3(1.3, 0.1, 1.0), 0.4)
+	tween.tween_property(sprite, "position:y", -height / 2.0, 0.4)
+	tween.tween_property(sprite, "modulate", Color(0.1, 0.1, 0.1, 0.0), 0.4)
+	if glow_sprite:
+		tween.tween_property(glow_sprite, "modulate:a", 0.0, 0.25)
 	tween.chain().tween_callback(queue_free)
 
 
@@ -406,22 +416,53 @@ func face(direction: Vector3):
 
 func update_visuals(delta):
 
-	var target_yaw = atan2(-facing.x, -facing.z)
-	pivot.global_rotation.y = lerp_angle(pivot.global_rotation.y, target_yaw, 10.0 * delta)
+	anim_time += delta
+
+	# Art faces right; flip when heading left on screen
+	if player and abs(facing.x) + abs(facing.z) > 0.01:
+		var on_screen = player.iso_basis().inverse() * facing
+		if abs(on_screen.x) > 0.15:
+			sprite.flip_h = on_screen.x < 0
+			if glow_sprite:
+				glow_sprite.flip_h = sprite.flip_h
 
 	var winding_up = state == State.ATTACK and not striking
+	var moving = Vector2(velocity.x, velocity.z).length() > 0.5
+	var target = Vector2.ONE
+	var lift = 0.0
+
+	if winding_up:
+		# Crouch and swell before striking
+		var t = clamp(1.0 - state_timer / windup_time, 0.0, 1.0)
+		target = Vector2(1.0 + 0.12 * t, 1.0 - 0.1 * t)
+	elif state == State.ATTACK and striking:
+		target = Vector2(0.92, 1.1)
+	elif moving:
+		# Hop along with a little squash on landing
+		var step = abs(sin(anim_time * (6.0 + move_speed)))
+		lift = step * height * 0.06
+		target = Vector2(1.0 + 0.04 * (1.0 - step), 1.0 - 0.04 * (1.0 - step))
+	else:
+		# Breathing
+		var b = sin(anim_time * 2.5) * 0.025
+		target = Vector2(1.0 - b * 0.5, 1.0 + b)
+
+	sprite_scale = sprite_scale.lerp(target, 14.0 * delta)
+	sprite.scale = Vector3(sprite_scale.x, sprite_scale.y, 1.0)
+	sprite.position.y = sprite_base_y + lift - (1.0 - sprite_scale.y) * height * 0.5
 
 	if flash_timer > 0.0:
-		material.albedo_color = Color.WHITE
+		sprite.modulate = Color(2.5, 2.5, 2.5)
 	elif winding_up:
 		# Glow red while winding up so the player can dodge
 		var t = clamp(1.0 - state_timer / windup_time, 0.0, 1.0)
-		material.albedo_color = data["color"].lerp(Color(1, 0.1, 0.1), t)
+		sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.35, 0.3), t)
 	else:
-		material.albedo_color = data["color"]
+		sprite.modulate = Color.WHITE
 
-	var swell = 1.15 if winding_up else 1.0
-	pivot.scale = pivot.scale.lerp(Vector3.ONE * swell, 12.0 * delta)
+	if glow_sprite:
+		var pulse = glow_strength * (1.0 + sin(anim_time * 3.0) * 0.12)
+		glow_sprite.modulate = Color(pulse, pulse, pulse, 1.0)
 
 	# Name + health only show once the creature is engaged or hurt
 	label.visible = state != State.IDLE or health < max_health

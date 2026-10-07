@@ -165,7 +165,7 @@ func take_damage(amount: int, from: Vector3):
 		enraged = true
 		move_speed *= 1.35
 		GameState.notify.emit("The Ashbound burns brighter!")
-		material.emission_energy_multiplier = 1.5
+		glow_strength = 1.8
 
 
 func die():
@@ -182,5 +182,5 @@ func reset():
 	super()
 	enraged = false
 	move_speed = 1.5 + data["speed"] * 0.2
-	material.emission_energy_multiplier = 0.4
+	glow_strength = 1.0
 	telegraph_mat.albedo_color.a = 0.0

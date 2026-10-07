@@ -68,12 +68,13 @@ func _ready():
 		button.pressed.connect(b[1].emit)
 		buttons.add_child(button)
 
-	# ---- Boss bar (top-center) ----
+	# ---- Boss bar (bottom-center, out of the boss's way) ----
 	boss_box = VBoxContainer.new()
-	boss_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	boss_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	boss_box.offset_left = -300
 	boss_box.offset_right = 300
-	boss_box.offset_top = 70
+	boss_box.offset_top = -72
+	boss_box.offset_bottom = -20
 	boss_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	boss_box.visible = false
 	add_child(boss_box)
@@ -88,8 +89,8 @@ func _ready():
 	toasts.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
 	toasts.offset_left = -400
 	toasts.offset_right = 400
-	toasts.offset_top = -160
-	toasts.offset_bottom = -60
+	toasts.offset_top = -190
+	toasts.offset_bottom = -90
 	toasts.alignment = BoxContainer.ALIGNMENT_END
 	toasts.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(toasts)
