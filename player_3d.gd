@@ -23,6 +23,8 @@ const FloatingText = preload("res://floating_text.gd")
 @export var iso_yaw_degrees: float = 45.0
 # Orthographic view height per zoom step
 @export var ortho_zoom_scale: float = 5.6
+# Orthographic cameras sit far back so tall trees never cross the near plane
+@export var ortho_distance: float = 16.0
 
 # Camera starting position
 # 0 = Far Top-Down
@@ -108,16 +110,20 @@ func _ready():
 		sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		sprite.shaded = true
 
-		# Stay visible behind trees in the isometric view
-		sprite.no_depth_test = true
-		sprite.render_priority = 1
+		# Depth-tested so scenery can stand in front of her; trees fade
+		# around her instead (occluder.gdshader)
+		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
+		sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_blob_shadow()
 
 		if texture_front:
 			sprite.texture = texture_front
 
-	# Don't let the spring arm collide with Veyl
+	# Don't let the spring arm collide with Veyl, or with trees: pulling the
+	# camera in just clips the canopies between it and the player
 	if spring_arm:
 		spring_arm.add_excluded_object(get_rid())
+		spring_arm.collision_mask = 0
 
 	apply_camera_preset(zoom_state, true)
 
@@ -205,6 +211,7 @@ func _physics_process(delta):
 
 
 	update_camera(delta)
+	RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 	if dead:
 
@@ -308,7 +315,7 @@ func update_camera(delta):
 
 	spring_arm.spring_length = lerp(
 		spring_arm.spring_length,
-		current_zoom,
+		camera_distance(),
 		follow_smoothness * delta
 	)
 
@@ -350,11 +357,41 @@ func apply_camera_preset(
 
 		if instant:
 
-			spring_arm.spring_length = current_zoom
+			spring_arm.spring_length = camera_distance()
 
 	if main_cam and instant:
 
 		main_cam.size = current_zoom * ortho_zoom_scale
+
+
+# Soft shadow under her feet, like the creatures have
+func add_blob_shadow():
+
+	var mesh = CylinderMesh.new()
+	mesh.top_radius = 0.32
+	mesh.bottom_radius = 0.32
+	mesh.height = 0.004
+	var mat = StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.albedo_color = Color(0, 0, 0, 0.4)
+	var blob = MeshInstance3D.new()
+	blob.mesh = mesh
+	blob.material_override = mat
+	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	blob.scale = Vector3(1.0, 1.0, 0.6)
+	var shape = $CollisionShape3D.shape as CylinderShape3D
+	blob.position.y = -shape.height / 2.0 + 0.01
+	add_child(blob)
+
+
+# Orthographic zoom comes from the view size, so distance only needs to clear the scenery
+func camera_distance() -> float:
+
+	if main_cam and main_cam.projection == Camera3D.PROJECTION_ORTHOGONAL:
+		return ortho_distance
+
+	return current_zoom
 
 
 # Where the cursor points on the ground plane Veyl stands on

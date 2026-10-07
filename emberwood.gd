@@ -21,6 +21,7 @@ var light: DirectionalLight3D
 var environment: Environment
 var embers: CPUParticles3D
 var base_light_energy: float
+var base_ambient_energy: float
 
 
 func _ready():
@@ -29,6 +30,7 @@ func _ready():
 	var world_env = get_node_or_null(environment_path)
 	if world_env:
 		environment = world_env.environment
+		base_ambient_energy = environment.ambient_light_energy
 	if light:
 		base_light_energy = light.light_energy
 
@@ -110,4 +112,4 @@ func _process(_delta):
 	if light:
 		light.light_energy = lerp(base_light_energy, base_light_energy * 0.35, t)
 	if environment:
-		environment.ambient_light_energy = lerp(0.6, 0.25, t)
+		environment.ambient_light_energy = lerp(base_ambient_energy, base_ambient_energy * 0.6, t)

@@ -27,13 +27,18 @@
 background_mode = 1
 background_color = Color(0.04, 0.04, 0.06, 1)
 ambient_light_source = 2
-ambient_light_color = Color(0.4, 0.42, 0.55, 1)
-ambient_light_energy = 0.6
+ambient_light_color = Color(0.4, 0.44, 0.62, 1)
+ambient_light_energy = 0.85
 tonemap_mode = 2
+tonemap_exposure = 1.1
 glow_enabled = true
+glow_bloom = 0.05
 fog_enabled = true
-fog_light_color = Color(0.08, 0.08, 0.11, 1)
-fog_density = 0.004
+fog_light_color = Color(0.13, 0.1, 0.14, 1)
+fog_density = 0.0025
+adjustment_enabled = true
+adjustment_contrast = 1.08
+adjustment_saturation = 1.08
 
 [sub_resource type="CylinderShape3D" id="CylinderShape3D_feb5d"]
 height = 1.8852539
@@ -470,7 +475,7 @@ shader_parameter/blend_hardness = 0.05
 
 [sub_resource type="PlaneMesh" id="PlaneMesh_ovte1"]
 material = SubResource("ShaderMaterial_fc0e3")
-size = Vector2(300, 300)
+size = Vector2(300, 380)
 
 [node name="World" type="Node3D" unique_id=1829279936]
 
@@ -478,10 +483,15 @@ size = Vector2(300, 300)
 environment = SubResource("Environment_fc0e3")
 
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=909321294]
-transform = Transform3D(-0.87121385, 0.49090368, 2.145808e-08, 0, -4.371139e-08, 1, 0.49090368, 0.87121385, 3.8081964e-08, -0.02724266, 0, 0)
-light_color = Color(0.65, 0.72, 1, 1)
-light_energy = 0.7
+transform = Transform3D(0.989949, 0.087068, -0.111442, -0.000000, 0.788011, 0.615661, 0.141421, -0.609474, 0.780091, 0, 20, 0)
+light_color = Color(1, 0.8, 0.6, 1)
+light_energy = 1.25
 shadow_enabled = true
+shadow_bias = 0.05
+shadow_normal_bias = 1.5
+shadow_blur = 1.5
+directional_shadow_mode = 1
+directional_shadow_max_distance = 180.0
 
 [node name="Player3D" type="CharacterBody3D" parent="." unique_id=2007522325]
 transform = Transform3D(-5, 0, 4.371139e-07, 0, 5, 0, -4.371139e-07, 0, -5, 0, 5.905036, 0)
