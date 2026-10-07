@@ -1,0 +1,30 @@
+[gd_scene format=3 uid="uid://bgs6aybjt8f8l"]
+
+[node name="WeaponEntry" type="Control" unique_id=204706222]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=147407084]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="EntryTitle" type="Label" parent="VBoxContainer" unique_id=1575336362]
+layout_mode = 2
+text = "EMBER SWORD"
+
+[node name="EntryImage" type="TextureRect" parent="VBoxContainer" unique_id=158250418]
+layout_mode = 2
+
+[node name="EntryStats" type="Label" parent="VBoxContainer" unique_id=550821616]
+layout_mode = 2
+
+[node name="EntryDescription" type="Label" parent="VBoxContainer" unique_id=472714789]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="VBoxContainer" unique_id=150271612]
+layout_mode = 2
