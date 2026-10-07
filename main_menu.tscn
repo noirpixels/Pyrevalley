@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c5ekg7hvyivxy"]
 
-[ext_resource type="Texture2D" uid="uid://b56r475pbih0h" path="res://UiBackround.png" id="1_06t4h"]
+[ext_resource type="Script" path="res://menu_background.gd" id="1_06t4h"]
 [ext_resource type="Script" uid="uid://jmo2avlg6ik2" path="res://main_menu.gd" id="1_7vrkn"]
 
 [sub_resource type="FontFile" id="FontFile_rhts7"]
@@ -26,25 +26,23 @@ cache/0/28/0/scale = 1.0
 
 [node name="MainMenu" type="Control" unique_id=65679043]
 layout_mode = 3
-anchor_right = 1.4440001
-anchor_bottom = 1.4510001
-offset_left = 13.0
-offset_top = 4.0
-offset_right = -507.48816
-offset_bottom = -305.24805
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_7vrkn")
 
-[node name="Background" type="TextureRect" parent="." unique_id=1206926269]
+[node name="Background" type="Control" parent="." unique_id=1206926269]
+clip_contents = true
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-texture = ExtResource("1_06t4h")
-expand_mode = 2
+mouse_filter = 2
+script = ExtResource("1_06t4h")
 
 [node name="Title" type="Label" parent="." unique_id=1397141672]
 layout_mode = 1
@@ -53,10 +51,15 @@ anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -183.0
 offset_right = 183.0
-offset_bottom = 88.0
+offset_top = 40.0
+offset_bottom = 128.0
 grow_horizontal = 2
+theme_override_colors/font_color = Color(1, 0.72, 0.42, 1)
+theme_override_colors/font_outline_color = Color(0.12, 0.04, 0.03, 1)
+theme_override_constants/outline_size = 12
 theme_override_font_sizes/font_size = 64
 text = "EMBERVALE"
+horizontal_alignment = 1
 
 [node name="MenuCenter" type="CenterContainer" parent="." unique_id=1963399909]
 layout_mode = 1
