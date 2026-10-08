@@ -32,7 +32,7 @@ layout_mode = 1
 offset_left = 416.0
 offset_top = 86.0
 offset_right = 816.0
-offset_bottom = 460.0
+offset_bottom = 400.0
 texture = ExtResource("2_oqqf1")
 expand_mode = 1
 
@@ -54,13 +54,13 @@ autowrap_mode = 3
 
 [node name="EntryDescription" type="Label" parent="." unique_id=11261521]
 custom_minimum_size = Vector2(600, 100)
-custom_maximum_size = Vector2(-1, 200)
+custom_maximum_size = Vector2(-1, 168)
 layout_mode = 0
-offset_left = 276.0
-offset_top = 474.0
-offset_right = 876.0
-offset_bottom = 582.0
-theme_override_font_sizes/font_size = 24
+offset_left = 226.0
+offset_top = 408.0
+offset_right = 926.0
+offset_bottom = 576.0
+theme_override_font_sizes/font_size = 22
 text = "A mysterious creature said to roam the outer valleys of Embervale. Few travelers have ever seen one up close."
 autowrap_mode = 3
 

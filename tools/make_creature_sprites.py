@@ -148,7 +148,7 @@ class Sprite:
                     self.add_glow(x, y, hexc("#fff1c4"), 1.0)
 
     # ---------- output ----------
-    def save(self, name):
+    def save(self, name, out=OUT):
         w, h = self.w, self.h
         solid = [[self.body[y][x] is not None for x in range(w)] for y in range(h)]
         rows = []
@@ -167,8 +167,8 @@ class Sprite:
                 else:
                     row.append((0, 0, 0, 0))
             rows.append(row)
-        write_png(os.path.join(OUT, name + ".png"), rows)
-        write_png(os.path.join(OUT, name + "_glow.png"),
+        write_png(os.path.join(out, name + ".png"), rows)
+        write_png(os.path.join(out, name + "_glow.png"),
                   [[(r, g, b, int(a * 255)) for (r, g, b, a) in row] for row in self.glow])
         print("wrote", name, w, "x", h)
 

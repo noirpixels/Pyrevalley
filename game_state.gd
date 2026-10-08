@@ -65,7 +65,7 @@ func new_game():
 	player_position = null
 	player_health = -1.0
 	boss_defeated = false
-	CodexData.discovered = {}
+	# The codex is kept across runs; load_game() fills it from the save
 	loaded = true
 
 
@@ -73,6 +73,8 @@ func new_game():
 func restart():
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	new_game()
+	# Keep what the codex has learned
+	save_game()
 
 
 # ============================================================

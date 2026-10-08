@@ -110,8 +110,8 @@ func _ready():
 		sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 		sprite.shaded = true
 
-		# Depth-tested so scenery can stand in front of her; trees fade
-		# around her instead (occluder.gdshader)
+		# Depth-tested so scenery can stand in front of Veyl; trees fade
+		# around the sprite instead (occluder.gdshader)
 		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 		sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		add_blob_shadow()
@@ -364,7 +364,7 @@ func apply_camera_preset(
 		main_cam.size = current_zoom * ortho_zoom_scale
 
 
-# Soft shadow under her feet, like the creatures have
+# Soft shadow under Veyl's feet, like the creatures have
 func add_blob_shadow():
 
 	var mesh = CylinderMesh.new()
