@@ -2,8 +2,8 @@ extends StaticBody3D
 
 # Low-poly pine built from code: a tapered trunk under drooping, star-edged
 # branch tiers, flat-shaded with vertex colours so every facet catches the
-# light differently. The canopy starts above Veyl's head so the player can
-# walk up to the trunk; trees between Veyl and the camera dither out
+# light differently. The canopy starts above Veyl's head so vae can walk
+# up to the trunk; trees between Veyl and the camera dither out
 # (occluder.gdshader).
 
 const VARIANTS = 4

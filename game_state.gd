@@ -38,6 +38,8 @@ var checkpoint_position = null
 var player_position = null
 var player_health = -1.0
 var boss_defeated = false
+# True while the Ashbound is fighting (shrines won't heal)
+var boss_fight = false
 
 
 # ============================================================

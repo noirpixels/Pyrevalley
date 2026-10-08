@@ -22,6 +22,7 @@
 [ext_resource type="Texture2D" uid="uid://dwg61mqsat6y6" path="res://Textures/Grass/dp1.png" id="43_tex"]
 [ext_resource type="Texture2D" uid="uid://cwh8ccp2p2pxi" path="res://Textures/Grass/r1.png" id="44_tex"]
 [ext_resource type="Texture2D" uid="uid://tpwrud7cvhqb" path="res://Textures/Grass/m1.png" id="45_tex"]
+[ext_resource type="Script" path="res://arena_seal.gd" id="46_seal"]
 
 [sub_resource type="Environment" id="Environment_fc0e3"]
 background_mode = 1
@@ -650,6 +651,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -100)
 script = ExtResource("26_gate")
 opens_when = "quest_complete"
 sealed_text = "The ash will not let you pass. Not yet."
+
+[node name="ArenaSeal" type="StaticBody3D" parent="Emberwood/Gates"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -100)
+script = ExtResource("46_seal")
 
 [node name="Pickups" type="Node3D" parent="Emberwood" unique_id=834347902]
 

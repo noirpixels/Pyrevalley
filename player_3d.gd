@@ -364,7 +364,7 @@ func apply_camera_preset(
 		main_cam.size = current_zoom * ortho_zoom_scale
 
 
-# Soft shadow under Veyl's feet, like the creatures have
+# Soft shadow under vair feet, like the creatures have
 func add_blob_shadow():
 
 	var mesh = CylinderMesh.new()

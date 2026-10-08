@@ -54,8 +54,8 @@ const PLANTS = [
 
 # "unlock" names a GameState condition; see CodexData.is_unlocked()
 const NPCS = [
-	{"name": "Veyl", "description": "Woke in the ash at the edge of Emberwood with an old sword and no memory. The embers lean toward Veyl whenever Veyl passes.", "role": "You", "image": "res://Veyl/veylclothed__F.png"},
-	{"name": "Rowan", "description": "An old warden who keeps a fire burning in the middle of Emberwood. Rowan has watched the creatures run for years, and seems to know more than any warden should.", "role": "Forest warden", "image": "res://NPCs/rowan.png", "unlock": "met_rowan"},
+	{"name": "Veyl", "description": "Woke in the ash at the edge of Emberwood with an old sword and no memory. The embers lean toward vem whenever vae passes.", "role": "You", "image": "res://Veyl/veylclothed__F.png"},
+	{"name": "Rowan", "description": "An old warden who keeps a fire burning in the middle of Emberwood. He has watched the creatures run for years, and he knows more than he says.", "role": "Forest warden", "image": "res://NPCs/rowan.png", "unlock": "met_rowan"},
 ]
 
 const LOCATIONS = [

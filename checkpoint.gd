@@ -74,7 +74,10 @@ func activate(player):
 	var first_time = GameState.checkpoint_position == null or GameState.checkpoint_position.distance_to(respawn_point()) > 1.0
 
 	GameState.checkpoint_position = respawn_point()
-	if player.health < player.max_health:
+	# No stepping out and back in for free heals mid-fight
+	if GameState.boss_fight:
+		GameState.notify.emit("The shrine's flame gutters. The Ashbound is too close.")
+	elif player.health < player.max_health:
 		player.heal(player.max_health - player.health)
 	GameState.save_game(player)
 	set_lit(true)

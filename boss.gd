@@ -11,7 +11,12 @@ extends "res://enemy.gd"
 const SLAM_RADIUS = 10.0
 const CHARGE_SPEED = 24.0
 const CHARGE_TIME = 0.55
-const CHARGE_MIN_DIST = 11.0
+const CHARGE_MIN_DIST = 9.0
+# The fight lasts while Veyl is within this distance of the arena centre;
+# the boss itself stops at leash_range and fights from there
+const TERRITORY_MARGIN = 12.0
+# Chases faster than its codex speed alone would make it
+const CHASE_SPEED_SCALE = 1.4
 const ERUPTION_RADIUS = 3.5
 const ERUPTION_DELAY = 1.0
 
@@ -30,7 +35,8 @@ func _ready():
 
 	detect_range = 26.0
 	lose_range = 45.0
-	leash_range = 45.0
+	# Reaches every corner of the arena, so it can't be pinned at its leash
+	leash_range = 60.0
 	detect_time = 1.0
 	windup_time = 0.75
 	recover_time = 0.5
@@ -39,6 +45,7 @@ func _ready():
 	ember_drop_chance = 0.0
 
 	super()
+	move_speed *= CHASE_SPEED_SCALE
 	build_telegraph()
 
 	var light = OmniLight3D.new()
@@ -78,10 +85,38 @@ func enter_state(new_state: State):
 
 	if new_state == State.CHASE and not engaged:
 		engaged = true
+		GameState.boss_fight = true
 		GameState.boss_engaged.emit(self)
 	elif new_state == State.IDLE and engaged:
 		engaged = false
+		GameState.boss_fight = false
 		GameState.boss_disengaged.emit()
+
+
+# ============================================================
+# TERRITORY
+# ============================================================
+
+func player_in_territory() -> bool:
+	return flat(player.global_position - home).length() <= leash_range + TERRITORY_MARGIN
+
+
+func can_detect(dist: float) -> bool:
+	return super(dist) and player_in_territory()
+
+
+# Only leaving the arena area ends the fight, not luring it to the edge
+func should_give_up(_dist: float) -> bool:
+	return player.dead or not player_in_territory()
+
+
+# Holds the edge of its arena instead of being pulled out of it; from
+# there it still charges and erupts
+func chase_movement(dir: Vector3) -> Vector3:
+	var from_home = flat(global_position - home)
+	if from_home.length() >= leash_range and dir.dot(from_home) > 0.0:
+		return Vector3.ZERO
+	return super(dir)
 
 
 # ============================================================
@@ -106,16 +141,13 @@ func wants_to_attack(dist: float) -> bool:
 		attack_kind = "slam" if randf() < 0.65 else "eruption"
 		return true
 
-	# Punish keeping distance
-	if dist >= CHARGE_MIN_DIST and dist < lose_range:
+	# Out of slam range is never safe: Veyl's sword outreaches the slam
+	# trigger, so poking from just outside it gets answered straight away
+	if dist >= CHARGE_MIN_DIST:
 		attack_kind = "charge" if randf() < 0.5 else "eruption"
-		return true
-
-	if randf() < 0.01:
+	else:
 		attack_kind = "eruption"
-		return true
-
-	return false
+	return true
 
 
 func begin_attack():
@@ -253,10 +285,17 @@ func take_damage(amount: int, from: Vector3):
 func die():
 
 	telegraph.visible = false
+	GameState.boss_fight = false
 	GameState.boss_disengaged.emit()
 	super()
 	Sfx.play("boss_death")
 	GameState.defeat_boss()
+
+
+# Leaving the level mid-fight (quit to menu) must not leave shrines cold
+func _exit_tree():
+	if engaged:
+		GameState.boss_fight = false
 
 
 func reset():
@@ -265,6 +304,6 @@ func reset():
 	enraged = false
 	queued_slam = false
 	followup = false
-	move_speed = 1.5 + data["speed"] * 0.2
+	move_speed = (1.5 + data["speed"] * 0.2) * CHASE_SPEED_SCALE
 	glow_strength = 1.0
 	telegraph_mat.albedo_color.a = 0.0

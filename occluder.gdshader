@@ -3,7 +3,7 @@ render_mode cull_back, specular_disabled;
 
 // Scenery that can stand between the camera and Veyl. Uses vertex colours
 // for albedo, and dithers itself away in a bubble around Veyl when it is
-// in front of them, so Veyl stays visible without being drawn over everything.
+// in front of vem, so Veyl stays visible without being drawn over everything.
 
 global uniform vec3 player_position;
 

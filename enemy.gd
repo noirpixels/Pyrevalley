@@ -38,6 +38,8 @@ var state: State = State.IDLE
 var state_timer: float = 0.0
 var cooldown_timer: float = 0.0
 var striking: bool = false
+# Gave up a chase and is heading home; ignores the player until it's there
+var returning: bool = false
 
 var max_health: float
 var health: float
@@ -220,7 +222,7 @@ func _physics_process(delta):
 	match state:
 
 		State.IDLE:
-			if not player.dead and dist < detect_range:
+			if can_detect(dist):
 				enter_state(State.DETECTED)
 			else:
 				move = idle_movement(delta)
@@ -231,12 +233,13 @@ func _physics_process(delta):
 				enter_state(State.CHASE)
 
 		State.CHASE:
-			if player.dead or dist > lose_range or flat(global_position - home).length() > leash_range:
+			if should_give_up(dist):
+				returning = not player.dead
 				enter_state(State.IDLE)
 			elif wants_to_attack(dist):
 				enter_state(State.ATTACK)
 			elif dist > attack_reach() * 0.8:
-				move = to_player / dist * move_speed
+				move = chase_movement(to_player / dist)
 				face(to_player)
 
 		State.ATTACK:
@@ -267,6 +270,9 @@ func idle_movement(delta) -> Vector3:
 
 	var to_home = flat(home - global_position)
 
+	if to_home.length() <= 4.0:
+		returning = false
+
 	if to_home.length() > 4.0:
 		health = min(health + max_health * 0.25 * delta, max_health)
 		update_label()
@@ -282,6 +288,24 @@ func idle_movement(delta) -> Vector3:
 	if wander_dir != Vector3.ZERO:
 		face(wander_dir)
 	return wander_dir * move_speed * 0.35
+
+
+# ============================================================
+# CHASE HOOKS (overridden by boss.gd)
+# ============================================================
+
+# Not while walking home after giving up: otherwise standing just past the
+# leash makes it flip between IDLE and DETECTED forever, never attacking
+func can_detect(dist: float) -> bool:
+	return not player.dead and not returning and dist < detect_range
+
+
+func should_give_up(dist: float) -> bool:
+	return player.dead or dist > lose_range or flat(global_position - home).length() > leash_range
+
+
+func chase_movement(dir: Vector3) -> Vector3:
+	return dir * move_speed
 
 
 # ============================================================
@@ -397,6 +421,7 @@ func reset():
 
 	health = max_health
 	global_position = home
+	returning = false
 	velocity = Vector3.ZERO
 	knockback = Vector3.ZERO
 	enter_state(State.IDLE)
