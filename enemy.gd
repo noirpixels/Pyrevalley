@@ -26,6 +26,10 @@ const DIZZY_DRAIN = 30.0
 # After coming to, it can't be dazed again for this long (no stunlock)
 const DIZZY_IMMUNITY = 3.0
 const SPIN_DRAG = 10.0
+# Below this vertical speed a launched target feels LAUNCH_HANG_GRAVITY
+# of normal gravity, so it hangs at the top of the launch
+const LAUNCH_HANG_SPEED = 6.0
+const LAUNCH_HANG_GRAVITY = 0.4
 
 # Same pixel density as Veyl's sprite (216 px = 8.1 units)
 const SPRITE_PIXEL_SIZE = 0.0375
@@ -256,7 +260,11 @@ func _physics_process(delta):
 			return
 
 	if not is_on_floor():
-		velocity.y -= gravity * delta
+		var g = gravity
+		# Launched targets hang near the top so the launch reads as a lift
+		if launched and abs(velocity.y) < LAUNCH_HANG_SPEED:
+			g *= LAUNCH_HANG_GRAVITY
+		velocity.y -= g * delta
 
 	state_timer -= delta
 	update_impact(delta)
