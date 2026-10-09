@@ -18,7 +18,7 @@ const TERRITORY_MARGIN = 12.0
 # Chases faster than its codex speed alone would make it
 const CHASE_SPEED_SCALE = 1.4
 const ERUPTION_RADIUS = 3.5
-const ERUPTION_DELAY = 1.0
+const ERUPTION_DELAY = 1.25
 
 var attack_kind: String = "slam"
 var charge_dir: Vector3 = Vector3.ZERO
@@ -38,9 +38,9 @@ func _ready():
 	# Reaches every corner of the arena, so it can't be pinned at its leash
 	leash_range = 60.0
 	detect_time = 1.0
-	windup_time = 0.75
-	recover_time = 0.5
-	attack_cooldown = 0.7
+	windup_time = 0.9
+	recover_time = 0.9
+	attack_cooldown = 1.3
 	staggerable = false
 	ember_drop_chance = 0.0
 
@@ -153,12 +153,12 @@ func wants_to_attack(dist: float) -> bool:
 func begin_attack():
 
 	super()
-	var windup = {"slam": 0.75, "charge": 0.6, "eruption": 0.5}[attack_kind]
+	var windup = {"slam": 0.9, "charge": 0.75, "eruption": 0.6}[attack_kind]
 	followup = queued_slam
 	queued_slam = false
 	if followup:
-		windup = 0.35
-	windup_time = windup * (0.75 if enraged else 1.0)
+		windup = 0.55
+	windup_time = windup * (0.85 if enraged else 1.0)
 	state_timer = windup_time
 	charge_hit = false
 
@@ -216,7 +216,7 @@ func attack_movement() -> Vector3:
 # Circles under the player, around them, and where they're heading
 func start_eruption():
 
-	var count = 5 if enraged else 3
+	var count = 4 if enraged else 3
 	var ground_y = global_position.y - height / 2.0 + 0.12
 	var target = flat(player.global_position)
 	var spots = [target, target + flat(player.velocity) * ERUPTION_DELAY * 0.8]
@@ -246,7 +246,7 @@ func spawn_eruption(where: Vector3):
 	get_parent().add_child(circle)
 	circle.global_position = where
 
-	var delay = ERUPTION_DELAY * (0.8 if enraged else 1.0)
+	var delay = ERUPTION_DELAY * (0.9 if enraged else 1.0)
 	var tween = circle.create_tween()
 	tween.tween_property(mat, "albedo_color:a", 0.5, delay)
 	tween.tween_callback(erupt.bind(where, mat))
@@ -277,7 +277,7 @@ func take_damage(amount: int, from: Vector3):
 
 	if not enraged and health > 0.0 and health < max_health * 0.5:
 		enraged = true
-		move_speed *= 1.35
+		move_speed *= 1.2
 		GameState.notify.emit("The Ashbound burns brighter!")
 		glow_strength = 1.8
 
