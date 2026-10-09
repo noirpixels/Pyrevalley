@@ -14,9 +14,9 @@ extends RefCounted
 const MOVES = {
 	"left":   {"damage": 1.0, "arc": 140.0, "range": 1.0, "cooldown": 1.0, "push": 10.0, "spin": -6.0, "dizzy": 18.0, "launch": 0.0,   "side": -1, "screen_dir": Vector2(-1, 0)},
 	"right":  {"damage": 1.0, "arc": 140.0, "range": 1.0, "cooldown": 1.0, "push": 13.0, "spin": 6.0,  "dizzy": 18.0, "launch": 0.0,   "side": 1,  "screen_dir": Vector2(1, 0)},
-	"up":     {"damage": 0.9, "arc": 110.0, "range": 1.0, "cooldown": 1.2, "push": 2.0,  "spin": 0.0,  "dizzy": 12.0, "launch": 9.0,   "side": 0,  "screen_dir": Vector2.ZERO},
-	"down":   {"damage": 1.1, "arc": 120.0, "range": 1.0, "cooldown": 1.1, "push": 4.0,  "spin": 0.0,  "dizzy": 22.0, "launch": -20.0, "side": 0,  "screen_dir": Vector2.ZERO},
-	"aerial": {"damage": 1.0, "arc": 140.0, "range": 1.0, "cooldown": 1.0, "push": 4.0,  "spin": 0.0,  "dizzy": 20.0, "launch": -20.0, "side": 0,  "screen_dir": Vector2.ZERO},
+	"up":     {"damage": 0.9, "arc": 110.0, "range": 1.0, "cooldown": 1.2, "push": 2.0,  "spin": 0.0,  "dizzy": 12.0, "launch": 15.0,  "side": 0,  "screen_dir": Vector2.ZERO},
+	"down":   {"damage": 1.1, "arc": 120.0, "range": 1.0, "cooldown": 1.1, "push": 4.0,  "spin": 0.0,  "dizzy": 22.0, "launch": -30.0, "side": 0,  "screen_dir": Vector2.ZERO},
+	"aerial": {"damage": 1.0, "arc": 140.0, "range": 1.0, "cooldown": 1.0, "push": 4.0,  "spin": 0.0,  "dizzy": 20.0, "launch": -30.0, "side": 0,  "screen_dir": Vector2.ZERO},
 }
 
 # Critical multiplier for an aerial hit on a launched target

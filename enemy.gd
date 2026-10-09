@@ -94,9 +94,10 @@ var label: Label3D
 var alert_label: Label3D
 var dizzy_label: Label3D
 
+# Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
 	"physics/3d/default_gravity"
-)
+) * 2.5
 
 
 func setup(creature: Dictionary, id: String = ""):

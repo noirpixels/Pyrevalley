@@ -30,7 +30,7 @@ const DIZZY_BONUS = 1.25
 
 @export_group("Movement")
 @export var speed: float = 8.0
-@export var jump_velocity: float = 4.5
+@export var jump_velocity: float = 9.0
 
 @export_group("Isometric Camera")
 @export var follow_smoothness: float = 10.0
@@ -93,9 +93,10 @@ var pan_amount: float = 0.0
 @onready var spring_arm: SpringArm3D = find_child("SpringArm3D")
 @onready var main_cam: Camera3D = find_child("MainGameCamera")
 
+# Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
 	"physics/3d/default_gravity"
-)
+) * 2.5
 
 
 # ============================================================
