@@ -6,6 +6,7 @@ const SEGMENTS = 16
 
 var radius: float = 6.0
 var arc_degrees: float = 120.0
+var color: Color = Color(1.0, 0.55, 0.15, 0.6)
 
 
 func _ready():
@@ -31,7 +32,7 @@ func _ready():
 	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	mat.albedo_color = Color(1.0, 0.55, 0.15, 0.6)
+	mat.albedo_color = color
 	material_override = mat
 
 	var tween = create_tween()

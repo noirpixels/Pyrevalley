@@ -13,6 +13,7 @@ var player: Node3D
 var health_bar: ProgressBar
 var health_label: Label
 var weapon_label: Label
+var combo_label: Label
 var quest_title: Label
 var quest_text: Label
 var buttons: HBoxContainer
@@ -41,6 +42,9 @@ func _ready():
 	status.add_child(health_bar)
 	weapon_label = UI.label("", 16, UI.MUTED)
 	status.add_child(weapon_label)
+	combo_label = UI.label("", 22, Color(1.0, 0.85, 0.3))
+	combo_label.modulate.a = 0.0
+	status.add_child(combo_label)
 
 	# ---- Quest + buttons (top-right) ----
 	var right = VBoxContainer.new()
@@ -104,7 +108,7 @@ func _ready():
 	add_child(prompt)
 
 	# ---- Controls hint (bottom-left), fades after a while ----
-	var hint = UI.label("WASD move · Mouse aim · Click attack · Shift dash · E interact · Wheel zoom", 14, UI.MUTED)
+	var hint = UI.label("WASD move · Mouse aim · Click jab · Drag to strike · Hold to charge · Jump + attack aerial · Right-click or Shift dodge · E interact", 14, UI.MUTED)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.offset_left = 24
 	hint.offset_top = -36
@@ -127,6 +131,7 @@ func _ready():
 	add_child(message)
 
 	GameState.inventory_changed.connect(update_weapon)
+	GameState.max_combo_changed.connect(update_weapon)
 	GameState.quest_changed.connect(update_quest)
 	GameState.notify.connect(toast)
 	GameState.boss_engaged.connect(_on_boss_engaged)
@@ -138,6 +143,7 @@ func setup(target: Node3D):
 	player = target
 	player.health_changed.connect(update_health)
 	player.interact_target_changed.connect(_on_interact_target_changed)
+	player.combo_changed.connect(update_combo)
 	update_health(player.health, player.max_health)
 	update_weapon()
 	update_quest()
@@ -171,7 +177,19 @@ func update_health(current: float, maximum: float):
 
 func update_weapon():
 
-	weapon_label.text = "%s  ·  ATK %d" % [GameState.equipped_weapon, player.get_attack() if player else 0]
+	weapon_label.text = "%s  ·  ATK %d  ·  Max Combo %d" % [GameState.equipped_weapon, player.get_attack() if player else 0, GameState.max_combo]
+
+
+func update_combo(count: int, maximum: int, multiplier: float):
+
+	if count <= 0:
+		create_tween().tween_property(combo_label, "modulate:a", 0.0, 0.3)
+		return
+
+	combo_label.text = "%d / %d HITS   ×%.1f" % [count, maximum, multiplier]
+	combo_label.modulate.a = 1.0
+	combo_label.scale = Vector2(1.2, 1.2)
+	create_tween().tween_property(combo_label, "scale", Vector2.ONE, 0.12)
 
 
 func update_quest():

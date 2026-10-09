@@ -9,6 +9,7 @@ signal notify(text)
 signal boss_engaged(boss)
 signal boss_disengaged
 signal boss_defeated_signal
+signal max_combo_changed
 
 const SAVE_PATH = "user://embervale_save.json"
 const QUEST_GOAL = 3
@@ -19,6 +20,11 @@ const ITEMS = {
 	"Moss Fiber": {"kind": "resource", "description": "Soft fibres that glow faintly in the dark."},
 	"Ash Core": {"kind": "resource", "description": "A dense lump of ash that hums when held."},
 }
+
+# Max Combo: how many hits Veyl can chain (see combo_tracker.gd). Rises by
+# one for Rowan's quest and for the first defeat of each kind of creature.
+const BASE_MAX_COMBO = 3
+const MAX_COMBO_LIMIT = 7
 
 # Quest states
 const QUEST_NOT_STARTED = "not_started"
@@ -38,6 +44,9 @@ var checkpoint_position = null
 var player_position = null
 var player_health = -1.0
 var boss_defeated = false
+var max_combo = BASE_MAX_COMBO
+# Creatures whose first defeat this run already raised Max Combo
+var combo_trophies = []
 # True while the Ashbound is fighting (shrines won't heal)
 var boss_fight = false
 
@@ -67,6 +76,8 @@ func new_game():
 	player_position = null
 	player_health = -1.0
 	boss_defeated = false
+	max_combo = BASE_MAX_COMBO
+	combo_trophies = []
 	# The codex is kept across runs; load_game() fills it from the save
 	loaded = true
 
@@ -105,6 +116,15 @@ func accept_quest():
 func complete_quest():
 	quest_state = QUEST_COMPLETE
 	quest_changed.emit()
+	raise_max_combo("Rowan's lesson")
+
+
+func raise_max_combo(reason: String):
+	if max_combo >= MAX_COMBO_LIMIT:
+		return
+	max_combo += 1
+	notify.emit("%s  ·  Max Combo %d" % [reason, max_combo])
+	max_combo_changed.emit()
 
 
 func quest_accepted() -> bool:
@@ -117,6 +137,10 @@ func record_creature_defeat(spawner_id: String, creature_name: String):
 
 	if CodexData.record_defeat(creature_name):
 		notify.emit("Codex discovered: " + creature_name)
+
+	if not creature_name in combo_trophies:
+		combo_trophies.append(creature_name)
+		raise_max_combo("First " + creature_name + " felled")
 
 	if quest_state == QUEST_ACTIVE:
 		quest_progress += 1
@@ -152,6 +176,8 @@ func save_game(player: Node3D = null):
 		"collected_pickups": collected_pickups,
 		"codex_discovered": CodexData.discovered,
 		"boss_defeated": boss_defeated,
+		"max_combo": max_combo,
+		"combo_trophies": combo_trophies,
 	}
 
 	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -178,6 +204,8 @@ func load_game() -> bool:
 	defeated_spawners = data.get("defeated_spawners", [])
 	collected_pickups = data.get("collected_pickups", [])
 	boss_defeated = data.get("boss_defeated", false)
+	max_combo = clampi(int(data.get("max_combo", BASE_MAX_COMBO)), BASE_MAX_COMBO, MAX_COMBO_LIMIT)
+	combo_trophies = data.get("combo_trophies", [])
 
 	# JSON numbers come back as floats
 	inventory = {}

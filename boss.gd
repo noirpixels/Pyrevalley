@@ -7,6 +7,8 @@ extends "res://enemy.gd"
 #   ERUPTION - burning circles open under and around the player, then burst
 # Enraged: faster windups, the slam comes twice, eruptions spread wider.
 # Dashing through an attack (invulnerable) is the intended answer.
+# Too heavy to launch, but alternating hits can daze it, which cancels
+# whatever it was winding up.
 
 const SLAM_RADIUS = 10.0
 const CHARGE_SPEED = 24.0
@@ -29,6 +31,7 @@ var followup: bool = false
 var engaged: bool = false
 var telegraph: MeshInstance3D
 var telegraph_mat: StandardMaterial3D
+var telegraph_tween: Tween
 
 
 func _ready():
@@ -45,6 +48,9 @@ func _ready():
 	ember_drop_chance = 0.0
 	# Damage dealt sticks, even across Veyl's deaths
 	regenerates = false
+	launchable = false
+	dizzy_threshold = 240.0
+	dizzy_time = 1.4
 
 	super()
 	move_speed *= CHASE_SPEED_SCALE
@@ -84,6 +90,10 @@ func build_telegraph():
 func enter_state(new_state: State):
 
 	super(new_state)
+
+	if new_state == State.DIZZY:
+		cancel_telegraph()
+		queued_slam = false
 
 	if new_state == State.CHASE and not engaged:
 		engaged = true
@@ -169,8 +179,9 @@ func begin_attack():
 
 	match attack_kind:
 		"slam":
-			telegraph_mat.albedo_color.a = 0.0
-			create_tween().tween_property(telegraph_mat, "albedo_color:a", 0.45, windup_time)
+			cancel_telegraph()
+			telegraph_tween = create_tween()
+			telegraph_tween.tween_property(telegraph_mat, "albedo_color:a", 0.45, windup_time)
 		"charge":
 			charge_dir = flat(player.global_position - global_position).normalized()
 		"eruption":
@@ -182,8 +193,10 @@ func perform_attack(dist: float):
 	Sfx.play("boss_attack")
 
 	if attack_kind == "slam":
+		cancel_telegraph()
 		telegraph_mat.albedo_color.a = 0.8
-		create_tween().tween_property(telegraph_mat, "albedo_color:a", 0.0, 0.3)
+		telegraph_tween = create_tween()
+		telegraph_tween.tween_property(telegraph_mat, "albedo_color:a", 0.0, 0.3)
 		if dist <= SLAM_RADIUS + PLAYER_RADIUS and not player.dead:
 			player.take_damage(
 				CodexData.calc_damage(data["attack"], player.defense),
@@ -194,6 +207,12 @@ func perform_attack(dist: float):
 			state_timer = 0.2
 	elif attack_kind == "charge":
 		state_timer = CHARGE_TIME + recover_time
+
+
+func cancel_telegraph():
+	if telegraph_tween:
+		telegraph_tween.kill()
+	telegraph_mat.albedo_color.a = 0.0
 
 
 func attack_movement() -> Vector3:
@@ -308,4 +327,4 @@ func reset():
 	super()
 	queued_slam = false
 	followup = false
-	telegraph_mat.albedo_color.a = 0.0
+	cancel_telegraph()

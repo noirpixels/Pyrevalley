@@ -4,9 +4,20 @@ signal health_changed(current, maximum)
 signal died
 signal respawned
 signal interact_target_changed(target)
+signal combo_changed(count, maximum, multiplier)
 
 const SlashEffect = preload("res://slash_effect.gd")
 const FloatingText = preload("res://floating_text.gd")
+const CombatMoves = preload("res://combat_moves.gd")
+const ComboTracker = preload("res://combo_tracker.gd")
+
+# An attack released this close to the end of the cooldown waits for it;
+# one released earlier is a fumble and breaks the combo
+const ATTACK_BUFFER = 0.15
+# Pause after a combo reaches Max Combo before the next chain can start
+const COMBO_END_LAG = 0.45
+# Extra damage on a dizzy target
+const DIZZY_BONUS = 1.25
 
 @export_group("2.5D Character Textures")
 @export var texture_front: Texture2D
@@ -64,6 +75,14 @@ var dash_dir: Vector3 = Vector3.ZERO
 var invuln_timer: float = 0.0
 var start_position: Vector3
 var interact_target: Node3D = null
+
+var combo = ComboTracker.new()
+# Left button gesture in progress (see CombatMoves.classify)
+var gesture_active: bool = false
+var gesture_start: Vector2
+var gesture_time: float = 0.0
+var buffered_move: Dictionary = {}
+var charge_glowing: bool = false
 
 @onready var sprite: Sprite3D = find_child("CharacterSprite")
 @onready var camera_boom: Node3D = find_child("CameraBoom")
@@ -167,10 +186,20 @@ func _unhandled_input(event):
 					max_zoom
 				)
 
-			# Left click swings toward the cursor
+			# Left button: the gesture is read on release
 			elif event.button_index == MOUSE_BUTTON_LEFT:
 
-				try_attack()
+				gesture_active = true
+				gesture_start = event.position
+				gesture_time = 0.0
+
+			elif event.button_index == MOUSE_BUTTON_RIGHT:
+
+				try_dash()
+
+		elif event.button_index == MOUSE_BUTTON_LEFT and gesture_active:
+
+			end_gesture(event.position)
 
 
 	# --------------------------------------------------------
@@ -197,6 +226,7 @@ func _unhandled_input(event):
 func _physics_process(delta):
 
 	attack_timer = max(attack_timer - delta, 0.0)
+	update_combat(delta)
 	dash_timer = max(dash_timer - delta, 0.0)
 	dash_cooldown_timer = max(dash_cooldown_timer - delta, 0.0)
 	invuln_timer = max(invuln_timer - delta, 0.0)
@@ -439,17 +469,54 @@ func update_sprite_facing():
 # COMBAT
 # ============================================================
 
-func try_attack():
+func end_gesture(release_pos: Vector2):
 
-	if attack_timer > 0.0:
-		return
+	gesture_active = false
+	set_charge_glow(false)
+
+	var move = CombatMoves.classify(
+		release_pos - gesture_start,
+		gesture_time,
+		get_viewport().get_visible_rect().size.y,
+		not is_on_floor()
+	)
+
+	if attack_timer <= 0.0:
+		perform_move(move)
+	elif attack_timer <= ATTACK_BUFFER:
+		buffered_move = move
+	elif combo.count > 0:
+		# Mashing breaks the rhythm
+		combo.drop()
+		emit_combo()
+
+
+func update_combat(delta):
+
+	if gesture_active:
+		gesture_time += delta
+		var drag = get_viewport().get_mouse_position() - gesture_start
+		var still = drag.length() < get_viewport().get_visible_rect().size.y * CombatMoves.TAP_FRACTION
+		set_charge_glow(still and gesture_time >= CombatMoves.CHARGE_TIME)
+
+	if not buffered_move.is_empty() and attack_timer <= 0.0 and not dead:
+		perform_move(buffered_move)
+		buffered_move = {}
+
+	if combo.tick(delta):
+		emit_combo()
+
+
+func perform_move(move: Dictionary):
 
 	var weapon = GameState.weapon()
-	var attack_range: float = weapon["range"]
-	attack_timer = weapon["cooldown"]
+	var attack_range: float = weapon["range"] * move["range"]
+	var arc: float = move["arc"]
+	attack_timer = weapon["cooldown"] * move["cooldown"]
 	Sfx.play("attack")
 
-	var half_arc = deg_to_rad(attack_arc_degrees) / 2.0
+	var half_arc = deg_to_rad(arc) / 2.0
+	var hits = []
 
 	for enemy in get_tree().get_nodes_in_group("enemies"):
 
@@ -462,15 +529,27 @@ func try_attack():
 		if offset.length() > 0.01 and aim_dir.angle_to(offset.normalized()) > half_arc:
 			continue
 
-		enemy.take_damage(
-			CodexData.calc_damage(get_attack(), enemy.data["defense"]),
-			global_position
-		)
+		hits.append(enemy)
+
+	if not hits.is_empty():
+		var combo_mult = combo.add_hit(GameState.max_combo)
+		for enemy in hits:
+			strike(enemy, move, combo_mult)
+
+		# The hit that reaches Max Combo (or an aerial finisher) ends the chain
+		if combo.finished(GameState.max_combo) or move["name"] == "aerial":
+			if combo.count > 1:
+				FloatingText.spawn(get_parent(), global_position + Vector3(0, 6, 0), "%d HIT!" % combo.count, Color(1.0, 0.85, 0.3))
+			combo.drop()
+			attack_timer += COMBO_END_LAG
+		emit_combo()
 
 	# Swing visual (spawned in world space, not under the scaled player)
 	var slash = SlashEffect.new()
 	slash.radius = attack_range
-	slash.arc_degrees = attack_arc_degrees
+	slash.arc_degrees = arc
+	if move["power"] or move["name"] == "charged":
+		slash.color = Color(1.0, 0.8, 0.3, 0.75)
 	get_parent().add_child(slash)
 	slash.global_position = Vector3(global_position.x, 0.1, global_position.z)
 	slash.global_basis = Basis.looking_at(aim_dir)
@@ -478,8 +557,61 @@ func try_attack():
 	# Quick squash on the sprite as the swing animation
 	if sprite:
 		var base_scale = Vector3.ONE * 0.75
-		sprite.scale = base_scale * Vector3(1.15, 0.9, 1.0)
+		var squash = 1.3 if move["power"] or move["name"] == "charged" else 1.15
+		sprite.scale = base_scale * Vector3(squash, 2.05 - squash, 1.0)
 		create_tween().tween_property(sprite, "scale", base_scale, 0.15)
+
+
+# Health damage first, then the separate push / spin / dizzy / launch
+func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
+
+	var mult = move["damage"] * combo_mult
+	var crit = move["name"] == "aerial" and enemy.launched
+	if crit:
+		mult *= CombatMoves.AERIAL_CRIT
+	if enemy.is_dizzy():
+		mult *= DIZZY_BONUS
+
+	enemy.take_damage(
+		CodexData.calc_damage(get_attack() * mult, enemy.data["defense"]),
+		global_position
+	)
+
+	if crit:
+		FloatingText.spawn(get_parent(), enemy.global_position + Vector3(0, enemy.height / 2.0 + 5.0, 0), "CRITICAL!", Color(1.0, 0.75, 0.2))
+
+	var away = enemy.global_position - global_position
+	away.y = 0
+	away = away.normalized() if away.length() > 0.01 else aim_dir
+
+	var push_dir = away
+	var screen_dir: Vector2 = move["screen_dir"]
+	if screen_dir != Vector2.ZERO:
+		# Screen direction of the drag, a little away from Veyl so the
+		# target isn't shoved back into the swing
+		var world = iso_basis() * Vector3(screen_dir.x, 0, screen_dir.y)
+		push_dir = (world + away * 0.25).normalized()
+
+	# Aerial hits only spike targets that are already in the air
+	var launch: float = move["launch"]
+	if move["name"] == "aerial" and not enemy.launched:
+		launch = 0.0
+
+	enemy.apply_impact(push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
+
+
+func emit_combo():
+
+	combo_changed.emit(combo.count, GameState.max_combo, 1.0 + ComboTracker.STEP_BONUS * max(combo.count - 1, 0))
+
+
+func set_charge_glow(on: bool):
+
+	if on == charge_glowing:
+		return
+	charge_glowing = on
+	if sprite and not dead:
+		sprite.modulate = Color(1.6, 1.1, 0.5) if on else Color.WHITE
 
 
 func get_attack() -> float:
@@ -507,6 +639,9 @@ func take_damage(amount: int, from: Vector3):
 
 	health = max(health - amount, 0.0)
 	invuln_timer = 0.3
+	if combo.count > 0:
+		combo.drop()
+		emit_combo()
 	health_changed.emit(health, max_health)
 	Sfx.play("player_hurt")
 

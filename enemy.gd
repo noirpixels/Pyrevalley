@@ -1,19 +1,32 @@
 extends CharacterBody3D
 
 # A creature from CodexData, driven by the GDD state machine:
-#   IDLE -> DETECTED -> CHASE -> ATTACK -> (HURT) -> DEAD
+#   IDLE -> DETECTED -> CHASE -> ATTACK -> (HURT / DIZZY) -> DEAD
+# Veyl's directional hits also push, spin, launch and daze it; that runs
+# on its own meters, separate from health (see IMPACT below).
 # Spawned by creature_spawner.gd; call setup() before adding to the tree.
 
 signal died(enemy)
 signal health_changed(current, maximum)
 
-enum State { IDLE, DETECTED, CHASE, ATTACK, HURT, DEAD }
+enum State { IDLE, DETECTED, CHASE, ATTACK, HURT, DIZZY, DEAD }
 
 const FloatingText = preload("res://floating_text.gd")
 const ItemPickup = preload("res://item_pickup.gd")
 const EmberPickup = preload("res://ember_pickup.gd")
 
 const PLAYER_RADIUS = 2.5
+# Dizzy meter: hits from alternating sides rattle a creature far more than
+# repeated hits from one side. It drains once the hits stop.
+const ALTERNATE_DIZZY = 2.5
+const SAME_SIDE_DIZZY = 0.6
+const SIDE_MEMORY = 1.2
+const DIZZY_DRAIN_DELAY = 0.8
+const DIZZY_DRAIN = 30.0
+# After coming to, it can't be dazed again for this long (no stunlock)
+const DIZZY_IMMUNITY = 3.0
+const SPIN_DRAG = 10.0
+
 # Same pixel density as Veyl's sprite (216 px = 8.1 units)
 const SPRITE_PIXEL_SIZE = 0.0375
 
@@ -30,6 +43,9 @@ var staggerable: bool = true
 var ember_drop_chance: float = 0.3
 # Heals when it gives up a chase or the player respawns
 var regenerates: bool = true
+var dizzy_threshold: float = 100.0
+var dizzy_time: float = 1.6
+var launchable: bool = true
 
 var data: Dictionary
 var spawner_id: String = ""
@@ -56,6 +72,18 @@ var wander_timer: float = 0.0
 var facing: Vector3 = Vector3.FORWARD
 var anim_time: float = 0.0
 
+# Impact meters, separate from health
+var dizzy: float = 0.0
+var dizzy_drain_delay: float = 0.0
+var dizzy_immunity: float = 0.0
+var last_side: int = 0
+var side_timer: float = 0.0
+var spin_speed: float = 0.0
+var spin_angle: float = 0.0
+var launched: bool = false
+var launch_grace: float = 0.0
+var base_flip: bool = false
+
 var body_texture: Texture2D
 var sprite: Sprite3D
 var glow_sprite: Sprite3D
@@ -64,6 +92,7 @@ var sprite_scale: Vector2 = Vector2.ONE
 var glow_strength: float = 1.0
 var label: Label3D
 var alert_label: Label3D
+var dizzy_label: Label3D
 
 var gravity: float = ProjectSettings.get_setting(
 	"physics/3d/default_gravity"
@@ -179,6 +208,18 @@ func build_body():
 	alert_label.visible = false
 	add_child(alert_label)
 
+	dizzy_label = Label3D.new()
+	dizzy_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	dizzy_label.no_depth_test = true
+	dizzy_label.text = "~ dizzy ~"
+	dizzy_label.font_size = 48
+	dizzy_label.pixel_size = 0.03
+	dizzy_label.outline_size = 12
+	dizzy_label.modulate = Color(1.0, 0.95, 0.4)
+	dizzy_label.position.y = alert_label.position.y
+	dizzy_label.visible = false
+	add_child(dizzy_label)
+
 
 # ============================================================
 # STATE MACHINE
@@ -189,6 +230,7 @@ func enter_state(new_state: State):
 	state = new_state
 	striking = false
 	alert_label.visible = new_state == State.DETECTED
+	dizzy_label.visible = new_state == State.DIZZY
 
 	match new_state:
 		State.DETECTED:
@@ -198,6 +240,8 @@ func enter_state(new_state: State):
 			begin_attack()
 		State.HURT:
 			state_timer = hurt_time
+		State.DIZZY:
+			state_timer = dizzy_time
 
 
 func _physics_process(delta):
@@ -214,6 +258,7 @@ func _physics_process(delta):
 		velocity.y -= gravity * delta
 
 	state_timer -= delta
+	update_impact(delta)
 	cooldown_timer = max(cooldown_timer - delta, 0.0)
 	flash_timer = max(flash_timer - delta, 0.0)
 
@@ -255,8 +300,13 @@ func _physics_process(delta):
 				enter_state(State.CHASE)
 			move = attack_movement()
 
+		# Launched creatures can't act until they land
 		State.HURT:
-			if state_timer <= 0.0:
+			if state_timer <= 0.0 and not launched:
+				enter_state(State.CHASE)
+
+		State.DIZZY:
+			if state_timer <= 0.0 and not launched:
 				enter_state(State.CHASE)
 
 	velocity.x = move.x + knockback.x
@@ -370,13 +420,98 @@ func take_damage(amount: int, from: Vector3):
 
 	if health <= 0.0:
 		die()
+	elif state == State.DIZZY or launched:
+		pass
 	elif staggerable or state == State.IDLE or state == State.DETECTED:
 		enter_state(State.HURT)
+
+
+# ============================================================
+# IMPACT (push, spin, dizziness, launch; never touches health)
+# ============================================================
+
+# push: velocity to shove it by; spin: rad/s; side: -1 left, 1 right, 0 none
+func apply_impact(push: Vector3, spin: float, dizzy_gain: float, launch: float, side: int):
+
+	if state == State.DEAD:
+		return
+
+	var weight = max(data["size"], 0.6)
+	knockback = push / weight
+	spin_speed += spin / weight
+
+	# Switching sides reverses its momentum and rattles it
+	if side != 0 and side_timer > 0.0:
+		if side == -last_side:
+			dizzy_gain *= ALTERNATE_DIZZY
+			knockback *= 1.25
+		else:
+			dizzy_gain *= SAME_SIDE_DIZZY
+	if side != 0:
+		last_side = side
+		side_timer = SIDE_MEMORY
+
+	if launchable and launch > 0.0 and not launched:
+		velocity.y = launch
+		launched = true
+		launch_grace = 0.1
+		enter_state(State.HURT)
+	elif launch < 0.0 and launched:
+		# Spiked back down
+		velocity.y = launch
+
+	if state != State.DIZZY and dizzy_immunity <= 0.0:
+		dizzy += dizzy_gain
+		dizzy_drain_delay = DIZZY_DRAIN_DELAY
+		if dizzy >= dizzy_threshold:
+			become_dizzy()
+
+
+func become_dizzy():
+
+	dizzy = 0.0
+	dizzy_immunity = dizzy_time + DIZZY_IMMUNITY
+	enter_state(State.DIZZY)
+	FloatingText.spawn(
+		get_parent(),
+		global_position + Vector3(0, height / 2.0 + 4.0, 0),
+		"DIZZY",
+		Color(1.0, 0.95, 0.4)
+	)
+
+
+func is_dizzy() -> bool:
+	return state == State.DIZZY
+
+
+func update_impact(delta):
+
+	side_timer = max(side_timer - delta, 0.0)
+	dizzy_immunity = max(dizzy_immunity - delta, 0.0)
+	launch_grace = max(launch_grace - delta, 0.0)
+
+	if dizzy_drain_delay > 0.0:
+		dizzy_drain_delay -= delta
+	else:
+		dizzy = max(dizzy - DIZZY_DRAIN * delta, 0.0)
+
+	spin_speed = move_toward(spin_speed, 0.0, SPIN_DRAG * delta)
+	spin_angle += spin_speed * delta
+	if abs(spin_speed) < 1.0:
+		# Settle facing the way it was
+		spin_angle = lerp(spin_angle, round(spin_angle / TAU) * TAU, 8.0 * delta)
+
+	if launched and launch_grace <= 0.0 and is_on_floor() and velocity.y <= 0.0:
+		launched = false
+		sprite_scale = Vector2(1.25, 0.7)
+		if state == State.HURT:
+			state_timer = 0.25
 
 
 func die():
 
 	state = State.DEAD
+	dizzy_label.visible = false
 	remove_from_group("enemies")
 	alert_label.visible = false
 	label.visible = false
@@ -428,6 +563,11 @@ func reset():
 	returning = false
 	velocity = Vector3.ZERO
 	knockback = Vector3.ZERO
+	dizzy = 0.0
+	dizzy_immunity = 0.0
+	spin_speed = 0.0
+	spin_angle = 0.0
+	launched = false
 	enter_state(State.IDLE)
 	health_changed.emit(health, max_health)
 	update_label()
@@ -451,9 +591,7 @@ func update_visuals(delta):
 	if player and abs(facing.x) + abs(facing.z) > 0.01:
 		var on_screen = player.iso_basis().inverse() * facing
 		if abs(on_screen.x) > 0.15:
-			sprite.flip_h = on_screen.x < 0
-			if glow_sprite:
-				glow_sprite.flip_h = sprite.flip_h
+			base_flip = on_screen.x < 0
 
 	var winding_up = state == State.ATTACK and not striking
 	var moving = Vector2(velocity.x, velocity.z).length() > 0.5
@@ -466,6 +604,10 @@ func update_visuals(delta):
 		target = Vector2(1.0 + 0.12 * t, 1.0 - 0.1 * t)
 	elif state == State.ATTACK and striking:
 		target = Vector2(0.92, 1.1)
+	elif state == State.DIZZY:
+		# Reeling
+		var w = sin(anim_time * 9.0) * 0.08
+		target = Vector2(1.0 + w, 1.0 - w)
 	elif moving:
 		# Hop along with a little squash on landing
 		var step = abs(sin(anim_time * (6.0 + move_speed)))
@@ -477,7 +619,12 @@ func update_visuals(delta):
 		target = Vector2(1.0 - b * 0.5, 1.0 + b)
 
 	sprite_scale = sprite_scale.lerp(target, 14.0 * delta)
-	sprite.scale = Vector3(sprite_scale.x, sprite_scale.y, 1.0)
+	# Spinning: the billboard turns edge-on and flips as it goes round
+	var turn = cos(spin_angle)
+	sprite.scale = Vector3(sprite_scale.x * max(abs(turn), 0.12), sprite_scale.y, 1.0)
+	sprite.flip_h = base_flip != (turn < 0.0)
+	if glow_sprite:
+		glow_sprite.flip_h = sprite.flip_h
 	sprite.position.y = sprite_base_y + lift - (1.0 - sprite_scale.y) * height * 0.5
 
 	if flash_timer > 0.0:
@@ -486,8 +633,13 @@ func update_visuals(delta):
 		# Glow red while winding up so the player can dodge
 		var t = clamp(1.0 - state_timer / windup_time, 0.0, 1.0)
 		sprite.modulate = Color.WHITE.lerp(Color(1.8, 0.35, 0.3), t)
+	elif state == State.DIZZY:
+		sprite.modulate = Color(1.25, 1.2, 0.8)
 	else:
 		sprite.modulate = Color.WHITE
+
+	if state == State.DIZZY:
+		dizzy_label.position.y = alert_label.position.y + sin(anim_time * 6.0) * 0.3
 
 	if glow_sprite:
 		var pulse = glow_strength * (1.0 + sin(anim_time * 3.0) * 0.12)
