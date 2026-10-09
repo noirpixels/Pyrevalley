@@ -28,6 +28,8 @@ var attack_cooldown: float = 0.9
 var hurt_time: float = 0.2
 var staggerable: bool = true
 var ember_drop_chance: float = 0.3
+# Heals when it gives up a chase or the player respawns
+var regenerates: bool = true
 
 var data: Dictionary
 var spawner_id: String = ""
@@ -274,8 +276,9 @@ func idle_movement(delta) -> Vector3:
 		returning = false
 
 	if to_home.length() > 4.0:
-		health = min(health + max_health * 0.25 * delta, max_health)
-		update_label()
+		if regenerates:
+			health = min(health + max_health * 0.25 * delta, max_health)
+			update_label()
 		face(to_home)
 		return to_home.normalized() * move_speed
 
@@ -419,7 +422,8 @@ func reset():
 	if state == State.DEAD:
 		return
 
-	health = max_health
+	if regenerates:
+		health = max_health
 	global_position = home
 	returning = false
 	velocity = Vector3.ZERO

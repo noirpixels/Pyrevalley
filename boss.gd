@@ -43,6 +43,8 @@ func _ready():
 	attack_cooldown = 1.3
 	staggerable = false
 	ember_drop_chance = 0.0
+	# Damage dealt sticks, even across Veyl's deaths
+	regenerates = false
 
 	super()
 	move_speed *= CHASE_SPEED_SCALE
@@ -301,9 +303,6 @@ func _exit_tree():
 func reset():
 
 	super()
-	enraged = false
 	queued_slam = false
 	followup = false
-	move_speed = (1.5 + data["speed"] * 0.2) * CHASE_SPEED_SCALE
-	glow_strength = 1.0
 	telegraph_mat.albedo_color.a = 0.0
