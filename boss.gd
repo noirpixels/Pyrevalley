@@ -18,7 +18,7 @@ const TERRITORY_MARGIN = 12.0
 # Chases faster than its codex speed alone would make it
 const CHASE_SPEED_SCALE = 1.4
 const ERUPTION_RADIUS = 3.5
-const ERUPTION_DELAY = 1.25
+const ERUPTION_DELAY = 1.0
 
 var attack_kind: String = "slam"
 var charge_dir: Vector3 = Vector3.ZERO
@@ -38,7 +38,7 @@ func _ready():
 	# Reaches every corner of the arena, so it can't be pinned at its leash
 	leash_range = 60.0
 	detect_time = 1.0
-	windup_time = 0.9
+	windup_time = 0.6
 	recover_time = 0.9
 	attack_cooldown = 1.3
 	staggerable = false
@@ -155,7 +155,10 @@ func wants_to_attack(dist: float) -> bool:
 func begin_attack():
 
 	super()
-	var windup = {"slam": 0.9, "charge": 0.75, "eruption": 0.6}[attack_kind]
+	# Too short to walk out of the slam ring (~0.55s at full speed plus
+	# reaction time), long enough to time a dash; the long recovery after
+	# each attack is the opening to hit back
+	var windup = {"slam": 0.6, "charge": 0.55, "eruption": 0.6}[attack_kind]
 	followup = queued_slam
 	queued_slam = false
 	if followup:
