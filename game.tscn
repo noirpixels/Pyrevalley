@@ -713,7 +713,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 12, 3, 88)
 pixel_size = 0.03
 billboard = 1
 modulate = Color(1, 0.85, 0.65, 0.85)
-text = "Click to jab  ·  Drag left, right or up to strike\nHold to charge  ·  Right-click to dodge"
+text = "Left/right click to strike  ·  Scroll up to launch\nScroll down to slam  ·  Shift to dodge"
 font_size = 40
 outline_size = 10
 

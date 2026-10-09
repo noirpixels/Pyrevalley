@@ -16,6 +16,10 @@ const ComboTracker = preload("res://combo_tracker.gd")
 const ATTACK_BUFFER = 0.15
 # Pause after a combo reaches Max Combo before the next chain can start
 const COMBO_END_LAG = 0.45
+# Quiet time that ends a scroll gesture
+const SCROLL_GAP = 0.25
+# Trackpad pan distance that counts as a scroll attack
+const PAN_THRESHOLD = 1.0
 # Extra damage on a dizzy target
 const DIZZY_BONUS = 1.25
 
@@ -77,12 +81,12 @@ var start_position: Vector3
 var interact_target: Node3D = null
 
 var combo = ComboTracker.new()
-# Left button gesture in progress (see CombatMoves.classify)
-var gesture_active: bool = false
-var gesture_start: Vector2
-var gesture_time: float = 0.0
 var buffered_move: Dictionary = {}
-var charge_glowing: bool = false
+# One scroll gesture is one attack: the wheel (and a trackpad's momentum)
+# sends a burst of events, so later ones are ignored until it goes quiet
+var scroll_locked: bool = false
+var scroll_quiet: float = 0.0
+var pan_amount: float = 0.0
 
 @onready var sprite: Sprite3D = find_child("CharacterSprite")
 @onready var camera_boom: Node3D = find_child("CameraBoom")
@@ -161,49 +165,33 @@ func _unhandled_input(event):
 		return
 
 	# --------------------------------------------------------
-	# MOUSE WHEEL ZOOM / ATTACK
+	# MOUSE ATTACKS
 	# --------------------------------------------------------
 
-	if event is InputEventMouseButton:
+	if event is InputEventMouseButton and event.pressed:
 
-		if event.pressed:
+		match event.button_index:
+			MOUSE_BUTTON_LEFT:
+				request_attack("left")
+			MOUSE_BUTTON_RIGHT:
+				request_attack("right")
+			MOUSE_BUTTON_WHEEL_UP:
+				scroll_attack("up")
+			MOUSE_BUTTON_WHEEL_DOWN:
+				scroll_attack("down")
 
-			# Scroll UP = zoom IN
-			if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+	# Trackpads send a two-finger scroll as a pan gesture instead
+	elif event is InputEventPanGesture:
 
-				current_zoom = clamp(
-					current_zoom - zoom_speed,
-					min_zoom,
-					max_zoom
-				)
-
-			# Scroll DOWN = zoom OUT
-			elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-
-				current_zoom = clamp(
-					current_zoom + zoom_speed,
-					min_zoom,
-					max_zoom
-				)
-
-			# Left button: the gesture is read on release
-			elif event.button_index == MOUSE_BUTTON_LEFT:
-
-				gesture_active = true
-				gesture_start = event.position
-				gesture_time = 0.0
-
-			elif event.button_index == MOUSE_BUTTON_RIGHT:
-
-				try_dash()
-
-		elif event.button_index == MOUSE_BUTTON_LEFT and gesture_active:
-
-			end_gesture(event.position)
+		scroll_quiet = 0.0
+		if not scroll_locked:
+			pan_amount += event.delta.y
+			if abs(pan_amount) >= PAN_THRESHOLD:
+				scroll_attack("up" if pan_amount < 0.0 else "down")
 
 
 	# --------------------------------------------------------
-	# DASH
+	# DASH / INTERACT / ZOOM
 	# --------------------------------------------------------
 
 	if event is InputEventKey:
@@ -217,6 +205,17 @@ func _unhandled_input(event):
 			elif event.keycode == KEY_E and interact_target:
 
 				interact_target.interact(self)
+
+		# Zoom moved off the wheel, which now attacks
+		if event.is_pressed():
+
+			if event.keycode == KEY_EQUAL or event.keycode == KEY_KP_ADD:
+
+				current_zoom = clamp(current_zoom - zoom_speed, min_zoom, max_zoom)
+
+			elif event.keycode == KEY_MINUS or event.keycode == KEY_KP_SUBTRACT:
+
+				current_zoom = clamp(current_zoom + zoom_speed, min_zoom, max_zoom)
 
 
 # ============================================================
@@ -469,17 +468,9 @@ func update_sprite_facing():
 # COMBAT
 # ============================================================
 
-func end_gesture(release_pos: Vector2):
+func request_attack(kind: String):
 
-	gesture_active = false
-	set_charge_glow(false)
-
-	var move = CombatMoves.classify(
-		release_pos - gesture_start,
-		gesture_time,
-		get_viewport().get_visible_rect().size.y,
-		not is_on_floor()
-	)
+	var move = CombatMoves.get_move(kind, not is_on_floor())
 
 	if attack_timer <= 0.0:
 		perform_move(move)
@@ -491,13 +482,22 @@ func end_gesture(release_pos: Vector2):
 		emit_combo()
 
 
+func scroll_attack(kind: String):
+
+	scroll_quiet = 0.0
+	if scroll_locked:
+		return
+	scroll_locked = true
+	pan_amount = 0.0
+	request_attack(kind)
+
+
 func update_combat(delta):
 
-	if gesture_active:
-		gesture_time += delta
-		var drag = get_viewport().get_mouse_position() - gesture_start
-		var still = drag.length() < get_viewport().get_visible_rect().size.y * CombatMoves.TAP_FRACTION
-		set_charge_glow(still and gesture_time >= CombatMoves.CHARGE_TIME)
+	scroll_quiet += delta
+	if scroll_quiet >= SCROLL_GAP:
+		scroll_locked = false
+		pan_amount = 0.0
 
 	if not buffered_move.is_empty() and attack_timer <= 0.0 and not dead:
 		perform_move(buffered_move)
@@ -548,7 +548,7 @@ func perform_move(move: Dictionary):
 	var slash = SlashEffect.new()
 	slash.radius = attack_range
 	slash.arc_degrees = arc
-	if move["power"] or move["name"] == "charged":
+	if move["name"] == "down" or move["name"] == "aerial":
 		slash.color = Color(1.0, 0.8, 0.3, 0.75)
 	get_parent().add_child(slash)
 	slash.global_position = Vector3(global_position.x, 0.1, global_position.z)
@@ -557,7 +557,7 @@ func perform_move(move: Dictionary):
 	# Quick squash on the sprite as the swing animation
 	if sprite:
 		var base_scale = Vector3.ONE * 0.75
-		var squash = 1.3 if move["power"] or move["name"] == "charged" else 1.15
+		var squash = 1.3 if move["name"] == "down" or move["name"] == "aerial" else 1.15
 		sprite.scale = base_scale * Vector3(squash, 2.05 - squash, 1.0)
 		create_tween().tween_property(sprite, "scale", base_scale, 0.15)
 
@@ -587,7 +587,7 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 	var push_dir = away
 	var screen_dir: Vector2 = move["screen_dir"]
 	if screen_dir != Vector2.ZERO:
-		# Screen direction of the drag, a little away from Veyl so the
+		# Screen direction of the attack, a little away from Veyl so the
 		# target isn't shoved back into the swing
 		var world = iso_basis() * Vector3(screen_dir.x, 0, screen_dir.y)
 		push_dir = (world + away * 0.25).normalized()
@@ -603,15 +603,6 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 func emit_combo():
 
 	combo_changed.emit(combo.count, GameState.max_combo, 1.0 + ComboTracker.STEP_BONUS * max(combo.count - 1, 0))
-
-
-func set_charge_glow(on: bool):
-
-	if on == charge_glowing:
-		return
-	charge_glowing = on
-	if sprite and not dead:
-		sprite.modulate = Color(1.6, 1.1, 0.5) if on else Color.WHITE
 
 
 func get_attack() -> float:

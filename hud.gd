@@ -108,7 +108,7 @@ func _ready():
 	add_child(prompt)
 
 	# ---- Controls hint (bottom-left), fades after a while ----
-	var hint = UI.label("WASD move · Mouse aim · Click jab · Drag to strike · Hold to charge · Jump + attack aerial · Right-click or Shift dodge · E interact", 14, UI.MUTED)
+	var hint = UI.label("WASD move · Mouse aim · Left/right click strike · Scroll up launch · Scroll down slam · Space jump · Shift dodge · E interact · -/= zoom", 14, UI.MUTED)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.offset_left = 24
 	hint.offset_top = -36
