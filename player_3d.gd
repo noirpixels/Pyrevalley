@@ -20,6 +20,9 @@ const COMBO_END_LAG = 0.45
 const SCROLL_GAP = 0.25
 # Trackpad pan distance that counts as a scroll attack
 const PAN_THRESHOLD = 1.0
+# macOS natural scrolling reverses the wheel and pan direction Godot reports,
+# so flip it back to match the way the fingers or wheel actually move
+var scroll_flip: bool = OS.get_name() == "macOS"
 # Extra damage on a dizzy target
 const DIZZY_BONUS = 1.25
 
@@ -177,9 +180,9 @@ func _unhandled_input(event):
 			MOUSE_BUTTON_RIGHT:
 				request_attack("right")
 			MOUSE_BUTTON_WHEEL_UP:
-				scroll_attack("up")
+				scroll_attack("down" if scroll_flip else "up")
 			MOUSE_BUTTON_WHEEL_DOWN:
-				scroll_attack("down")
+				scroll_attack("up" if scroll_flip else "down")
 
 	# Trackpads send a two-finger scroll as a pan gesture instead
 	elif event is InputEventPanGesture:
@@ -188,7 +191,8 @@ func _unhandled_input(event):
 		if not scroll_locked:
 			pan_amount += event.delta.y
 			if abs(pan_amount) >= PAN_THRESHOLD:
-				scroll_attack("up" if pan_amount < 0.0 else "down")
+				var pan_up = (pan_amount > 0.0) if scroll_flip else (pan_amount < 0.0)
+				scroll_attack("up" if pan_up else "down")
 
 
 	# --------------------------------------------------------

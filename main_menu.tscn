@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://c5ekg7hvyivxy"]
 
-[ext_resource type="Script" path="res://menu_background.gd" id="1_06t4h"]
+[ext_resource type="Script" uid="uid://bf1hqh7r3xwgm" path="res://menu_background.gd" id="1_06t4h"]
 [ext_resource type="Script" uid="uid://jmo2avlg6ik2" path="res://main_menu.gd" id="1_7vrkn"]
 
 [sub_resource type="FontFile" id="FontFile_rhts7"]
@@ -50,8 +50,8 @@ anchors_preset = 5
 anchor_left = 0.5
 anchor_right = 0.5
 offset_left = -183.0
-offset_right = 183.0
 offset_top = 40.0
+offset_right = 183.0
 offset_bottom = 128.0
 grow_horizontal = 2
 theme_override_colors/font_color = Color(1, 0.72, 0.42, 1)
