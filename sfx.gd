@@ -36,7 +36,7 @@ func get_stream(sound: String) -> AudioStream:
 	return streams[sound]
 
 
-func play(sound: String, volume_db: float = 0.0):
+func play(sound: String, volume_db: float = 0.0, pitch: float = 1.0):
 
 	var stream = get_stream(sound)
 	if stream == null:
@@ -46,7 +46,7 @@ func play(sound: String, volume_db: float = 0.0):
 	next_player = (next_player + 1) % POOL_SIZE
 	p.stream = stream
 	p.volume_db = volume_db
-	p.pitch_scale = randf_range(0.95, 1.05)
+	p.pitch_scale = pitch * randf_range(0.95, 1.05)
 	p.play()
 
 

@@ -11,6 +11,8 @@ const FloatingText = preload("res://floating_text.gd")
 const CombatMoves = preload("res://combat_moves.gd")
 const ComboTracker = preload("res://combo_tracker.gd")
 const VeylAnimator = preload("res://veyl_animator.gd")
+const HitSpark = preload("res://hit_spark.gd")
+const SpritePose = preload("res://sprite_pose.gd")
 
 # An attack released this close to the end of the cooldown waits for it;
 # one released earlier is a fumble and breaks the combo
@@ -24,6 +26,10 @@ const PAN_THRESHOLD = 1.0
 # macOS natural scrolling reverses the wheel and pan direction Godot reports,
 # so flip it back to match the way the fingers or wheel actually move
 var scroll_flip: bool = OS.get_name() == "macOS"
+# Game speed during hit-stop, the brief freeze when a hit lands
+const HIT_STOP_SCALE = 0.05
+# Swing sound pitch per move: slams lower, launches higher
+const SWING_PITCH = {"left": 1.0, "right": 1.05, "up": 1.2, "down": 0.8, "aerial": 0.75}
 # Extra damage on a dizzy target
 const DIZZY_BONUS = 1.25
 
@@ -97,6 +103,9 @@ var pan_amount: float = 0.0
 @onready var spring_arm: SpringArm3D = find_child("SpringArm3D")
 @onready var main_cam: Camera3D = find_child("MainGameCamera")
 var animator: VeylAnimator
+# Camera shake strength (world units), decays every frame
+var shake: float = 0.0
+var hit_stop_left: float = 0.0
 
 # Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
@@ -367,6 +376,10 @@ func update_camera(delta):
 			follow_smoothness * delta
 		)
 
+	shake = move_toward(shake, 0.0, shake * 10.0 * delta + 0.2 * delta)
+	main_cam.h_offset = randf_range(-shake, shake)
+	main_cam.v_offset = randf_range(-shake, shake)
+
 	# Skip until the spring arm has moved the camera off the player
 	var focus = global_position + Vector3(0, 1.0, 0)
 
@@ -523,7 +536,7 @@ func perform_move(move: Dictionary):
 	var attack_range: float = weapon["range"] * move["range"]
 	var arc: float = move["arc"]
 	attack_timer = weapon["cooldown"] * move["cooldown"]
-	Sfx.play("attack")
+	Sfx.play("attack", 0.0, SWING_PITCH.get(move["name"], 1.0))
 
 	var half_arc = deg_to_rad(arc) / 2.0
 	var hits = []
@@ -563,6 +576,15 @@ func perform_move(move: Dictionary):
 	get_parent().add_child(slash)
 	slash.global_position = Vector3(global_position.x, 0.1, global_position.z)
 	slash.global_basis = Basis.looking_at(aim_dir)
+	match move["name"]:
+		"down", "aerial":
+			slash.style = "ring"
+		"up":
+			slash.style = "fan"
+		_:
+			# Run the sweep toward the side of the screen the move swings to
+			var local_right = SpritePose.screen_x(self, slash.global_basis.x)
+			slash.sweep_dir = 1.0 if local_right * move["side"] >= 0.0 else -1.0
 
 	if animator:
 		animator.swing(move["name"], aim_dir)
@@ -586,6 +608,23 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 	if crit:
 		FloatingText.spawn(get_parent(), enemy.global_position + Vector3(0, enemy.height / 2.0 + 5.0, 0), "CRITICAL!", Color(1.0, 0.75, 0.2))
 
+	# Heavier moves land harder: longer freeze, more shake, more sparks
+	var heavy = crit or move["launch"] != 0.0 or combo.finished(GameState.max_combo)
+	var spark_at = enemy.global_position + Vector3(0, enemy.height * 0.2, 0)
+	var spark_dir = (enemy.global_position - global_position) * Vector3(1, 0, 1) + Vector3.UP * 0.6
+	if crit:
+		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.85, 0.4), 28)
+		hit_stop(0.12)
+		shake = max(shake, 0.6)
+	elif heavy:
+		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.6, 0.2), 20)
+		hit_stop(0.08)
+		shake = max(shake, 0.35)
+	else:
+		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.5, 0.15), 12)
+		hit_stop(0.045)
+		shake = max(shake, 0.15)
+
 	var away = enemy.global_position - global_position
 	away.y = 0
 	away = away.normalized() if away.length() > 0.01 else aim_dir
@@ -604,6 +643,30 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		launch = 0.0
 
 	enemy.apply_impact(push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
+
+
+# Freeze the game for a moment so the hit has weight. Overlapping hits
+# extend the freeze rather than stacking.
+func hit_stop(duration: float):
+
+	var already_stopped = hit_stop_left > 0.0
+	hit_stop_left = max(hit_stop_left, duration)
+	if already_stopped:
+		return
+
+	Engine.time_scale = HIT_STOP_SCALE
+	while hit_stop_left > 0.0:
+		var before = Time.get_ticks_usec()
+		await get_tree().process_frame
+		hit_stop_left -= (Time.get_ticks_usec() - before) / 1000000.0
+	hit_stop_left = 0.0
+	Engine.time_scale = 1.0
+
+
+# Never leave the game frozen if Veyl is removed mid hit-stop
+func _exit_tree():
+
+	Engine.time_scale = 1.0
 
 
 func emit_combo():
