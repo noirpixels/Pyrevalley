@@ -27,10 +27,14 @@ const LINES_END = [
 const BODY_TEXTURE = preload("res://NPCs/rowan.png")
 const GLOW_TEXTURE = preload("res://NPCs/rowan_glow.png")
 const SPRITE_PIXEL_SIZE = 0.0375
+const SpritePose = preload("res://sprite_pose.gd")
 
 var fire_light: OmniLight3D
 var flames: Array[MeshInstance3D] = []
 var time: float = 0.0
+var body: Sprite3D
+# Counts down after Veyl talks to him: a little bob of greeting
+var greet_timer: float = 0.0
 
 
 func _ready():
@@ -42,7 +46,7 @@ func _ready():
 func build_body():
 
 	# Painted sprite (tools/make_npc_sprites.py), same pixel density as Veyl
-	var body = Sprite3D.new()
+	body = Sprite3D.new()
 	body.texture = BODY_TEXTURE
 	body.pixel_size = SPRITE_PIXEL_SIZE
 	body.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
@@ -50,7 +54,6 @@ func build_body():
 	body.alpha_cut = SpriteBase3D.ALPHA_CUT_DISCARD
 	body.shaded = true
 	body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	body.position.y = BODY_TEXTURE.get_height() * SPRITE_PIXEL_SIZE / 2.0
 	add_child(body)
 
 	# Eyes and lantern stay lit in the dark
@@ -63,6 +66,7 @@ func build_body():
 	glow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	glow.render_priority = 1
 	body.add_child(glow)
+	SpritePose.pin_to_feet(body)
 
 	var shadow_mesh = CylinderMesh.new()
 	shadow_mesh.top_radius = 2.0
@@ -168,12 +172,19 @@ func _process(delta):
 		flames[i].scale = Vector3(1.0 / flicker, flicker, 1.0 / flicker)
 		flames[i].rotation.y = time * (0.6 - i * 1.4)
 
+	# Slow breathing and a gentle sway by the fire
+	greet_timer = max(greet_timer - delta, 0.0)
+	var breath = sin(time * 2.0) * 0.02
+	var bob = sin((1.0 - greet_timer / 0.5) * PI) * 0.1 if greet_timer > 0.0 else 0.0
+	SpritePose.apply(body, sin(time * 0.9) * 0.025, Vector2(1.0 - breath * 0.5 + bob * 0.5, 1.0 + breath - bob))
+
 
 # Called by the player when pressing E nearby
 func interact(_player):
 
 	var ui = get_tree().get_first_node_in_group("game_ui")
 	Sfx.play("npc")
+	greet_timer = 0.5
 
 	if GameState.boss_defeated:
 		ui.show_dialogue("Rowan", LINES_END)

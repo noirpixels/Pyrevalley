@@ -10,6 +10,7 @@ const SlashEffect = preload("res://slash_effect.gd")
 const FloatingText = preload("res://floating_text.gd")
 const CombatMoves = preload("res://combat_moves.gd")
 const ComboTracker = preload("res://combo_tracker.gd")
+const VeylAnimator = preload("res://veyl_animator.gd")
 
 # An attack released this close to the end of the cooldown waits for it;
 # one released earlier is a fumble and breaks the combo
@@ -95,6 +96,7 @@ var pan_amount: float = 0.0
 @onready var camera_boom: Node3D = find_child("CameraBoom")
 @onready var spring_arm: SpringArm3D = find_child("SpringArm3D")
 @onready var main_cam: Camera3D = find_child("MainGameCamera")
+var animator: VeylAnimator
 
 # Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
@@ -145,6 +147,9 @@ func _ready():
 
 		if texture_front:
 			sprite.texture = texture_front
+
+		animator = VeylAnimator.new(self, sprite)
+		add_child(animator)
 
 	# Don't let the spring arm collide with Veyl, or with trees: pulling the
 	# camera in just clips the canopies between it and the player
@@ -559,12 +564,8 @@ func perform_move(move: Dictionary):
 	slash.global_position = Vector3(global_position.x, 0.1, global_position.z)
 	slash.global_basis = Basis.looking_at(aim_dir)
 
-	# Quick squash on the sprite as the swing animation
-	if sprite:
-		var base_scale = Vector3.ONE * 0.75
-		var squash = 1.3 if move["name"] == "down" or move["name"] == "aerial" else 1.15
-		sprite.scale = base_scale * Vector3(squash, 2.05 - squash, 1.0)
-		create_tween().tween_property(sprite, "scale", base_scale, 0.15)
+	if animator:
+		animator.swing(move["name"], aim_dir)
 
 
 # Health damage first, then the separate push / spin / dizzy / launch
@@ -653,6 +654,9 @@ func take_damage(amount: int, from: Vector3):
 	push.y = 0
 	if push.length() > 0.01:
 		velocity += push.normalized() * 8.0
+
+	if animator:
+		animator.hurt(from)
 
 	if sprite:
 		sprite.modulate = Color(1.0, 0.3, 0.3)

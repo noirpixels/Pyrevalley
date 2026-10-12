@@ -14,6 +14,7 @@ enum State { IDLE, DETECTED, CHASE, ATTACK, HURT, DIZZY, DEAD }
 const FloatingText = preload("res://floating_text.gd")
 const ItemPickup = preload("res://item_pickup.gd")
 const EmberPickup = preload("res://ember_pickup.gd")
+const SpritePose = preload("res://sprite_pose.gd")
 
 const PLAYER_RADIUS = 2.5
 # Dizzy meter: hits from alternating sides rattle a creature far more than
@@ -93,6 +94,9 @@ var sprite: Sprite3D
 var glow_sprite: Sprite3D
 var sprite_base_y: float
 var sprite_scale: Vector2 = Vector2.ONE
+var lean: float = 0.0
+# Lean kicked in by a hit; fades back out
+var recoil: float = 0.0
 var glow_strength: float = 1.0
 var label: Label3D
 var alert_label: Label3D
@@ -164,7 +168,7 @@ func build_body():
 	add_child(shadow)
 
 	# Feet sit on the bottom of the collision cylinder
-	sprite_base_y = -height / 2.0 + visual_height / 2.0
+	sprite_base_y = -height / 2.0
 
 	sprite = Sprite3D.new()
 	sprite.texture = body_texture
@@ -189,6 +193,8 @@ func build_body():
 		glow_sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		glow_sprite.render_priority = 1
 		sprite.add_child(glow_sprite)
+
+	SpritePose.pin_to_feet(sprite)
 
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -417,6 +423,8 @@ func take_damage(amount: int, from: Vector3):
 	var push = flat(global_position - from)
 	if push.length() > 0.01:
 		knockback = push.normalized() * 9.0 / data["size"]
+		# The top snaps the way it's pushed
+		recoil = -SpritePose.screen_x(sprite, push.normalized()) * 0.3
 
 	FloatingText.spawn(
 		get_parent(),
@@ -577,6 +585,7 @@ func reset():
 	spin_speed = 0.0
 	spin_angle = 0.0
 	launched = false
+	recoil = 0.0
 	enter_state(State.IDLE)
 	health_changed.emit(health, max_health)
 	update_label()
@@ -604,37 +613,58 @@ func update_visuals(delta):
 
 	var winding_up = state == State.ATTACK and not striking
 	var moving = Vector2(velocity.x, velocity.z).length() > 0.5
+	# Leaning by +toward_x tips the top away from where it faces
+	var toward_x = SpritePose.screen_x(sprite, facing)
 	var target = Vector2.ONE
+	var target_lean = 0.0
 	var lift = 0.0
 
-	if winding_up:
-		# Crouch and swell before striking
+	if launched:
+		# Knocked onto its back in the air
+		target = Vector2(0.9, 1.1)
+		target_lean = toward_x * 0.5
+	elif winding_up:
+		# Crouch, swell and rear back before striking
 		var t = clamp(1.0 - state_timer / windup_time, 0.0, 1.0)
 		target = Vector2(1.0 + 0.12 * t, 1.0 - 0.1 * t)
+		target_lean = toward_x * 0.18 * t
 	elif state == State.ATTACK and striking:
+		# Lunge into the strike
 		target = Vector2(0.92, 1.1)
+		target_lean = -toward_x * 0.25
 	elif state == State.DIZZY:
 		# Reeling
 		var w = sin(anim_time * 9.0) * 0.08
 		target = Vector2(1.0 + w, 1.0 - w)
+		target_lean = sin(anim_time * 4.5) * 0.2
+	elif state == State.DETECTED:
+		# Startled hop
+		var t = clamp(1.0 - state_timer / detect_time, 0.0, 1.0)
+		lift = sin(t * PI) * height * 0.2
+		target = Vector2(0.9, 1.12)
 	elif moving:
-		# Hop along with a little squash on landing
-		var step = abs(sin(anim_time * (6.0 + move_speed)))
+		# Hop along with a little squash on landing, waddling side to side
+		var stride = anim_time * (6.0 + move_speed)
+		var step = abs(sin(stride))
 		lift = step * height * 0.06
 		target = Vector2(1.0 + 0.04 * (1.0 - step), 1.0 - 0.04 * (1.0 - step))
+		var heading_x = SpritePose.screen_x(sprite, flat(velocity)) / max(move_speed, 1.0)
+		target_lean = clamp(-heading_x * 0.12, -0.3, 0.3) + sin(stride) * 0.05
 	else:
 		# Breathing
 		var b = sin(anim_time * 2.5) * 0.025
 		target = Vector2(1.0 - b * 0.5, 1.0 + b)
 
 	sprite_scale = sprite_scale.lerp(target, 14.0 * delta)
-	# Spinning: the billboard turns edge-on and flips as it goes round
+	lean = lerp(lean, target_lean, 12.0 * delta)
+	recoil = lerp(recoil, 0.0, 10.0 * delta)
+	# Spinning: the sprite turns edge-on and flips as it goes round
 	var turn = cos(spin_angle)
-	sprite.scale = Vector3(sprite_scale.x * max(abs(turn), 0.12), sprite_scale.y, 1.0)
+	SpritePose.apply(sprite, lean + recoil, Vector2(sprite_scale.x * max(abs(turn), 0.12), sprite_scale.y))
 	sprite.flip_h = base_flip != (turn < 0.0)
 	if glow_sprite:
 		glow_sprite.flip_h = sprite.flip_h
-	sprite.position.y = sprite_base_y + lift - (1.0 - sprite_scale.y) * height * 0.5
+	sprite.position.y = sprite_base_y + lift
 
 	if flash_timer > 0.0:
 		sprite.modulate = Color(2.5, 2.5, 2.5)
