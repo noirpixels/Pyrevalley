@@ -18,21 +18,16 @@ static func label(text: String, size: int, color: Color = TEXT) -> Label:
 	return l
 
 
-# Display text: names, titles, big moments
+# Display text in carved capitals: names, titles, big moments
 static func title(text: String, size: int, color: Color = TEXT) -> Label:
 	var l = label(text, size, color)
-	l.add_theme_constant_override("outline_size", 12)
+	l.add_theme_font_override("font", Style.display_bold)
+	l.add_theme_constant_override("outline_size", 10)
 	return l
 
 
 static func panel_style() -> StyleBoxFlat:
-	var style = StyleBoxFlat.new()
-	style.bg_color = Color(0.07, 0.05, 0.05, 0.92)
-	style.border_color = Color(0.55, 0.25, 0.1)
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(6)
-	style.set_content_margin_all(24)
-	return style
+	return Style.panel()
 
 
 static func button(text: String, callback: Callable) -> Button:

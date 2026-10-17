@@ -8,9 +8,10 @@ signal codex_pressed
 signal pause_pressed
 
 const UI = preload("res://ui_kit.gd")
+const InkBar = preload("res://ink_bar.gd")
 
 var player: Node3D
-var health_bar: ProgressBar
+var health_bar: InkBar
 var health_label: Label
 var weapon_label: Label
 var combo_label: Label
@@ -18,7 +19,7 @@ var quest_title: Label
 var quest_text: Label
 var buttons: HBoxContainer
 var boss_box: VBoxContainer
-var boss_bar: ProgressBar
+var boss_bar: InkBar
 var prompt: Label
 var hint: Label
 var hint_fade: Tween
@@ -38,13 +39,13 @@ func _ready():
 	status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(status)
 
-	health_label = UI.label("VEYL", 20)
+	health_label = UI.title("VEYL", 22, UI.TEXT)
 	status.add_child(health_label)
-	health_bar = make_bar(Vector2(280, 16), Color(0.9, 0.35, 0.1))
+	health_bar = InkBar.new(Vector2(300, 18), Color(0.85, 0.3, 0.08))
 	status.add_child(health_bar)
 	weapon_label = UI.label("", 16, UI.MUTED)
 	status.add_child(weapon_label)
-	combo_label = UI.label("", 22, Color(1.0, 0.85, 0.3))
+	combo_label = UI.title("", 28, Color(1.0, 0.8, 0.35))
 	combo_label.modulate.a = 0.0
 	status.add_child(combo_label)
 
@@ -57,7 +58,7 @@ func _ready():
 	right.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(right)
 
-	quest_title = UI.label("", 18, UI.EMBER)
+	quest_title = UI.title("", 20, UI.EMBER)
 	quest_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	right.add_child(quest_title)
 	quest_text = UI.label("", 16)
@@ -78,17 +79,18 @@ func _ready():
 	# ---- Boss bar (bottom-center, out of the boss's way) ----
 	boss_box = VBoxContainer.new()
 	boss_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
-	boss_box.offset_left = -300
-	boss_box.offset_right = 300
-	boss_box.offset_top = -72
-	boss_box.offset_bottom = -20
+	boss_box.offset_left = -330
+	boss_box.offset_right = 330
+	boss_box.offset_top = -84
+	boss_box.offset_bottom = -24
 	boss_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	boss_box.visible = false
 	add_child(boss_box)
-	var boss_name = UI.label("THE ASHBOUND", 24, UI.EMBER)
+	var boss_name = UI.title("—   THE ASHBOUND   —", 26, UI.EMBER)
 	boss_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	boss_box.add_child(boss_name)
-	boss_bar = make_bar(Vector2(600, 20), Color(0.75, 0.12, 0.05))
+	# The notch marks where it burns brighter
+	boss_bar = InkBar.new(Vector2(660, 22), Color(0.7, 0.1, 0.05), [0.5])
 	boss_box.add_child(boss_bar)
 
 	# ---- Prompt + notifications (bottom-center) ----
@@ -153,29 +155,13 @@ func setup(target: Node3D):
 	update_quest()
 
 
-func make_bar(size: Vector2, color: Color) -> ProgressBar:
-
-	var bar = ProgressBar.new()
-	bar.custom_minimum_size = size
-	bar.show_percentage = false
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var fill = StyleBoxFlat.new()
-	fill.bg_color = color
-	bar.add_theme_stylebox_override("fill", fill)
-	var bg = StyleBoxFlat.new()
-	bg.bg_color = Color(0.1, 0.08, 0.08, 0.85)
-	bar.add_theme_stylebox_override("background", bg)
-	return bar
-
-
 # ============================================================
 # UPDATES
 # ============================================================
 
 func update_health(current: float, maximum: float):
 
-	health_bar.max_value = maximum
-	health_bar.value = current
+	health_bar.set_values(current, maximum)
 	health_label.text = "VEYL  %d / %d" % [current, maximum]
 
 
@@ -190,10 +176,11 @@ func update_combo(count: int, maximum: int, multiplier: float):
 		create_tween().tween_property(combo_label, "modulate:a", 0.0, 0.3)
 		return
 
-	combo_label.text = "%d / %d HITS   ×%.1f" % [count, maximum, multiplier]
+	combo_label.text = "%d HIT%s   ×%.1f" % [count, "S" if count > 1 else "", multiplier]
 	combo_label.modulate.a = 1.0
-	combo_label.scale = Vector2(1.2, 1.2)
-	create_tween().tween_property(combo_label, "scale", Vector2.ONE, 0.12)
+	combo_label.pivot_offset = Vector2(0, 18)
+	combo_label.scale = Vector2(1.35, 1.35)
+	create_tween().tween_property(combo_label, "scale", Vector2.ONE, 0.15).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
 func update_quest():
@@ -252,16 +239,18 @@ func _on_interact_target_changed(target):
 func _on_boss_engaged(boss):
 
 	boss_box.visible = true
-	boss_bar.max_value = boss.max_health
-	boss_bar.value = boss.health
+	boss_bar.set_values(boss.health, boss.max_health)
+	# The boss bar takes the bottom of the screen; the controls reminder goes
+	if hint_fade:
+		hint_fade.kill()
+	create_tween().tween_property(hint, "modulate:a", 0.0, 0.4)
 	if not boss.health_changed.is_connected(_on_boss_health):
 		boss.health_changed.connect(_on_boss_health)
 
 
 func _on_boss_health(current: float, maximum: float):
 
-	boss_bar.max_value = maximum
-	boss_bar.value = current
+	boss_bar.set_values(current, maximum)
 
 
 func toast(text: String):

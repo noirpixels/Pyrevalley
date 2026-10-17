@@ -3,27 +3,6 @@
 [ext_resource type="Script" uid="uid://bf1hqh7r3xwgm" path="res://menu_background.gd" id="1_06t4h"]
 [ext_resource type="Script" uid="uid://jmo2avlg6ik2" path="res://main_menu.gd" id="1_7vrkn"]
 
-[sub_resource type="FontFile" id="FontFile_rhts7"]
-cache/0/variation_coordinates = {}
-cache/0/face_index = 0
-cache/0/embolden = 0.0
-cache/0/transform = Transform2D(1, 0, 0, 1, 0, 0)
-cache/0/spacing_top = 0
-cache/0/spacing_bottom = 0
-cache/0/spacing_space = 0
-cache/0/spacing_glyph = 0
-cache/0/baseline_offset = 0.0
-cache/0/16/0/ascent = 0.0
-cache/0/16/0/descent = 0.0
-cache/0/16/0/underline_position = 0.0
-cache/0/16/0/underline_thickness = 0.0
-cache/0/16/0/scale = 1.0
-cache/0/28/0/ascent = 0.0
-cache/0/28/0/descent = 0.0
-cache/0/28/0/underline_position = 0.0
-cache/0/28/0/underline_thickness = 0.0
-cache/0/28/0/scale = 1.0
-
 [node name="MainMenu" type="Control" unique_id=65679043]
 layout_mode = 3
 anchors_preset = 15
@@ -82,36 +61,31 @@ theme_override_constants/separation = 15
 [node name="PlayButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=1498119642]
 layout_mode = 2
 tooltip_text = "PLAY"
-theme_override_fonts/font = SubResource("FontFile_rhts7")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "PLAY"
 
 [node name="CodexButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=2084985165]
 layout_mode = 2
 tooltip_text = "PLAY"
-theme_override_fonts/font = SubResource("FontFile_rhts7")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "CODEX"
 
 [node name="SettingsButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=716864092]
 layout_mode = 2
 tooltip_text = "PLAY"
-theme_override_fonts/font = SubResource("FontFile_rhts7")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "SETTINGS"
 
 [node name="CreditsButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=662005334]
 layout_mode = 2
 tooltip_text = "PLAY"
-theme_override_fonts/font = SubResource("FontFile_rhts7")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "CREDITS"
 
 [node name="QuitButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=866131582]
 layout_mode = 2
 tooltip_text = "PLAY"
-theme_override_fonts/font = SubResource("FontFile_rhts7")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 24
 text = "QUIT"
 
 [connection signal="pressed" from="MenuCenter/MenuButtons/PlayButton" to="." method="_on_play_button_pressed"]

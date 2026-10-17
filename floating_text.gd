@@ -13,6 +13,7 @@ static func spawn(parent: Node, pos: Vector3, msg: String, color: Color) -> void
 func _ready():
 	billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	no_depth_test = true
+	font = Style.display_bold
 	font_size = 64
 	pixel_size = 0.03
 	outline_size = 16

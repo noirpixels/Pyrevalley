@@ -21,7 +21,7 @@ func _ready():
 	box.add_theme_constant_override("separation", 14)
 	add_child(box)
 
-	var title = UI.label("INVENTORY", 30, UI.EMBER)
+	var title = UI.title("INVENTORY", 32, UI.EMBER)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(title)
 

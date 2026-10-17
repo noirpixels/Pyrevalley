@@ -21,6 +21,7 @@ CodexData="*uid://bsrkncllfswql"
 GameState="*res://game_state.gd"
 Sfx="*res://sfx.gd"
 Pad="*res://pad.gd"
+Style="*res://style.gd"
 
 [display]
 

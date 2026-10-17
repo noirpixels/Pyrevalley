@@ -23,7 +23,7 @@ func _ready():
 	bg.color = Color(0, 0, 0, 0)
 	add_child(bg)
 
-	quiet = UI.label("THE FOREST IS QUIET.", 44, UI.TEXT)
+	quiet = UI.title("THE FOREST IS QUIET.", 44, UI.TEXT)
 	UI.centered(quiet)
 	quiet.modulate.a = 0.0
 	add_child(quiet)
@@ -35,7 +35,7 @@ func _ready():
 	final.visible = false
 	add_child(final)
 
-	var title = UI.label("EMBERVALE", 72, UI.EMBER)
+	var title = UI.title("EMBERVALE", 80, UI.EMBER)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	final.add_child(title)
 

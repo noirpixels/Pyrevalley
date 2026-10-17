@@ -32,10 +32,10 @@ func _ready():
 	box.add_theme_constant_override("separation", 8)
 	add_child(box)
 
-	speaker_label = UI.label("", 22, UI.EMBER)
+	speaker_label = UI.title("", 24, UI.EMBER)
 	box.add_child(speaker_label)
 
-	text_label = UI.label("", 20)
+	text_label = UI.label("", 22)
 	text_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	text_label.custom_minimum_size = Vector2(780, 60)
 	box.add_child(text_label)

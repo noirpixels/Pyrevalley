@@ -41,11 +41,29 @@ func _ready():
 	build_embers()
 	add_child(InkPost.new())
 	add_child(WorldDressing.new())
+	update_signs()
+	Pad.mode_changed.connect(update_signs)
 	Sfx.play_music("forest")
 	Sfx.play_ambience("forest")
 	GameState.boss_engaged.connect(func(_boss): Sfx.play_music("boss"))
 	# Deferred: when the boss dies it disengages just before it counts as defeated
 	GameState.boss_disengaged.connect(_on_boss_disengaged, CONNECT_DEFERRED)
+
+
+# The tutorial signs name the keys or pad buttons in use
+func update_signs():
+
+	var move_sign = get_node_or_null("Signs/MoveSign")
+	var fight_sign = get_node_or_null("Signs/FightSign")
+	if move_sign == null or fight_sign == null:
+		return
+	if Pad.using_pad:
+		move_sign.text = "%s to move  ·  %s to aim" % [Pad.glyph("move_left"), Pad.glyph("aim_left")]
+		fight_sign.text = "%s / %s to strike  ·  %s to launch\n%s to slam  ·  %s to dodge" % [
+			Pad.glyph("strike_left"), Pad.glyph("strike_right"), Pad.glyph("launch"), Pad.glyph("slam"), Pad.glyph("dash")]
+	else:
+		move_sign.text = "WASD to move  ·  Mouse to aim"
+		fight_sign.text = "Left/right click to strike  ·  Scroll up to launch\nScroll down to slam  ·  Shift to dodge"
 
 
 func _on_boss_disengaged():
