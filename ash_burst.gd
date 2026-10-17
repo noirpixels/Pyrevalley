@@ -62,6 +62,9 @@ func emitter(count: int, life: float, start: Color, end: Color, dir: Vector3, sp
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	mat.vertex_color_use_as_albedo = true
 	mat.render_priority = 5
+	# Ash flakes stay sharp-edged; smoke and embers are soft
+	if start.r > 0.5 or start.a < 1.0:
+		mat.albedo_texture = preload("res://fx.gd").soft_dot()
 	quad.material = mat
 	p.mesh = quad
 	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

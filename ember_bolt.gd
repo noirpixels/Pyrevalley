@@ -60,6 +60,7 @@ func _ready():
 	trail_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	trail_mat.vertex_color_use_as_albedo = true
 	trail_mat.render_priority = 5
+	trail_mat.albedo_texture = preload("res://fx.gd").soft_dot()
 	quad.material = trail_mat
 	trail.mesh = quad
 	add_child(trail)

@@ -68,6 +68,7 @@ func _ready():
 	spark_mat.vertex_color_use_as_albedo = true
 	spark_mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
 	spark_mat.render_priority = 10
+	spark_mat.albedo_texture = preload("res://fx.gd").soft_dot()
 	quad.material = spark_mat
 	sparks.mesh = quad
 	add_child(sparks)

@@ -6,6 +6,7 @@ extends Node3D
 # Handles the level bounds, atmosphere and music.
 
 const InkPost = preload("res://ink_post.gd")
+const WorldDressing = preload("res://world_dressing.gd")
 
 @export var light_path: NodePath = ^"../DirectionalLight3D"
 @export var environment_path: NodePath = ^"../WorldEnvironment"
@@ -39,6 +40,7 @@ func _ready():
 	build_bounds()
 	build_embers()
 	add_child(InkPost.new())
+	add_child(WorldDressing.new())
 	Sfx.play_music("forest")
 
 
@@ -94,6 +96,7 @@ func build_embers():
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.vertex_color_use_as_albedo = true
 	mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	mat.albedo_texture = preload("res://fx.gd").soft_dot()
 	quad.material = mat
 	embers.mesh = quad
 
