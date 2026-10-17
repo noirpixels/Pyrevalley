@@ -719,6 +719,7 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		hit_stop(1.1 if boss else 0.3, 0.2)
 		shake = max(shake, 0.8 if boss else 0.45)
 		InkPost.flash(get_tree(), Color(1.0, 0.94, 0.82), 0.6 if boss else 0.3)
+		Sfx.play("kill", -3.0 if boss else -6.0)
 		Pad.rumble(0.7, 0.9, 0.3)
 
 	# Heavier moves land harder: longer freeze, more shake, more sparks
@@ -731,6 +732,7 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		shake = max(shake, 0.6)
 		Pad.rumble(0.6, 0.8, 0.18)
 	elif heavy:
+		Sfx.play("hit_heavy", -2.0)
 		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.6, 0.2), 20)
 		hit_stop(0.08)
 		shake = max(shake, 0.35)
@@ -832,6 +834,7 @@ func try_dash():
 
 	dash_timer = dash_time
 	dash_cooldown_timer = dash_cooldown
+	Sfx.play("dash", -4.0)
 	invuln_timer = dash_time + 0.05
 
 

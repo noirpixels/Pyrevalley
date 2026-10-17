@@ -481,7 +481,7 @@ func begin_attack():
 	var dir = to_player.normalized() if to_player.length() > 0.01 else facing
 	var ground = global_position - Vector3(0, height / 2.0, 0)
 	clear_tele(true)
-	Sfx.play("enemy_windup", -6.0, randf_range(0.9, 1.1))
+	Sfx.play("enemy_windup", -10.0, randf_range(0.9, 1.15))
 
 	match move_kind:
 		"bite":

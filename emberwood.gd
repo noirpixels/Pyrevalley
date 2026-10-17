@@ -42,6 +42,18 @@ func _ready():
 	add_child(InkPost.new())
 	add_child(WorldDressing.new())
 	Sfx.play_music("forest")
+	Sfx.play_ambience("forest")
+	GameState.boss_engaged.connect(func(_boss): Sfx.play_music("boss"))
+	# Deferred: when the boss dies it disengages just before it counts as defeated
+	GameState.boss_disengaged.connect(_on_boss_disengaged, CONNECT_DEFERRED)
+
+
+func _on_boss_disengaged():
+
+	if GameState.boss_defeated:
+		Sfx.stop_music()
+	else:
+		Sfx.play_music("forest")
 
 
 func build_bounds():
