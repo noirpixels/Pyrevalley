@@ -30,6 +30,10 @@ var scroll_flip: bool = OS.get_name() == "macOS"
 const HIT_STOP_SCALE = 0.05
 # Swing sound pitch per move: slams lower, launches higher
 const SWING_PITCH = {"left": 1.0, "right": 1.05, "up": 1.2, "down": 0.8, "aerial": 0.75}
+# Height (world units) where Veyl's shadow is at its smallest and faintest
+const SHADOW_FADE_HEIGHT = 6.0
+# How quickly WASD can bend Veyl's path in mid-air; on the ground it's instant
+const AIR_STEER = 5.0
 # Extra damage on a dizzy target
 const DIZZY_BONUS = 1.25
 
@@ -106,6 +110,10 @@ var animator: VeylAnimator
 # Camera shake strength (world units), decays every frame
 var shake: float = 0.0
 var hit_stop_left: float = 0.0
+# Ground shadow; it stays on the floor while Veyl is in the air
+var blob: MeshInstance3D
+var blob_mat: StandardMaterial3D
+var blob_base_scale: Vector3
 
 # Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
@@ -266,6 +274,7 @@ func _physics_process(delta):
 		velocity.x = 0
 		velocity.z = 0
 		move_and_slide()
+		update_blob_shadow()
 		return
 
 
@@ -314,6 +323,15 @@ func _physics_process(delta):
 		velocity.x = dash_dir.x * dash_speed
 		velocity.z = dash_dir.z * dash_speed
 
+	elif not is_on_floor():
+
+		# Keep the jump's momentum; input only nudges it, and letting go
+		# doesn't stop Veyl dead in the air
+		if direction != Vector3.ZERO:
+			var steer = 1.0 - exp(-AIR_STEER * delta)
+			velocity.x = lerp(velocity.x, direction.x * speed, steer)
+			velocity.z = lerp(velocity.z, direction.z * speed, steer)
+
 	elif direction != Vector3.ZERO:
 
 		velocity.x = direction.x * speed
@@ -337,6 +355,7 @@ func _physics_process(delta):
 	update_interact_target()
 
 	move_and_slide()
+	update_blob_shadow()
 
 
 # ============================================================
@@ -423,18 +442,43 @@ func add_blob_shadow():
 	mesh.top_radius = 0.32
 	mesh.bottom_radius = 0.32
 	mesh.height = 0.004
-	var mat = StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(0, 0, 0, 0.4)
-	var blob = MeshInstance3D.new()
+	blob_mat = StandardMaterial3D.new()
+	blob_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	blob_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	blob_mat.albedo_color = Color(0, 0, 0, 0.4)
+	blob = MeshInstance3D.new()
 	blob.mesh = mesh
-	blob.material_override = mat
+	blob.material_override = blob_mat
 	blob.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	blob.scale = Vector3(1.0, 1.0, 0.6)
 	var shape = $CollisionShape3D.shape as CylinderShape3D
 	blob.position.y = -shape.height / 2.0 + 0.01
 	add_child(blob)
+	blob_base_scale = blob.scale
+
+
+# Drops the shadow to the floor below Veyl, shrinking and fading it with
+# height so a jump reads as going up rather than moving north
+func update_blob_shadow():
+
+	if blob == null:
+		return
+
+	var shape = $CollisionShape3D.shape as CylinderShape3D
+	var feet = global_position + global_basis.y * (-shape.height / 2.0)
+	var ray = PhysicsRayQueryParameters3D.create(feet + Vector3.UP * 0.1, feet + Vector3.DOWN * 100.0)
+	ray.exclude = [get_rid()]
+	var hit = get_world_3d().direct_space_state.intersect_ray(ray)
+	if hit.is_empty():
+		blob.visible = false
+		return
+
+	blob.visible = true
+	var height = max(feet.y - hit["position"].y - 0.1, 0.0)
+	var t = clamp(height / SHADOW_FADE_HEIGHT, 0.0, 1.0)
+	blob.global_position = Vector3(feet.x, hit["position"].y + 0.05, feet.z)
+	blob.scale = blob_base_scale * lerp(1.0, 0.45, t)
+	blob_mat.albedo_color.a = lerp(0.4, 0.12, t)
 
 
 # Orthographic zoom comes from the view size, so distance only needs to clear the scenery
