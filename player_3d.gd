@@ -36,6 +36,12 @@ const SHADOW_FADE_HEIGHT = 6.0
 const AIR_STEER = 5.0
 # Extra damage on a dizzy target
 const DIZZY_BONUS = 1.25
+# Pad buttons for each move (mouse attacks are handled as events below)
+const PAD_MOVES = {"left": "strike_left", "right": "strike_right", "up": "launch", "down": "slam"}
+# Right stick tilt that takes over aiming
+const AIM_STICK_DEADZONE = 0.3
+# With a pad, an attack turns toward an enemy this far off the aim (degrees)
+const AIM_ASSIST_DEGREES = 70.0
 
 @export_group("2.5D Character Textures")
 @export var texture_front: Texture2D
@@ -101,6 +107,8 @@ var buffered_move: Dictionary = {}
 var scroll_locked: bool = false
 var scroll_quiet: float = 0.0
 var pan_amount: float = 0.0
+# Physics frame Veyl last ran on, to spot the first frame after a pause
+var last_physics_frame: int = 0
 
 @onready var sprite: Sprite3D = find_child("CharacterSprite")
 @onready var camera_boom: Node3D = find_child("CameraBoom")
@@ -217,32 +225,33 @@ func _unhandled_input(event):
 				scroll_attack("up" if pan_up else "down")
 
 
-	# --------------------------------------------------------
-	# DASH / INTERACT / ZOOM
-	# --------------------------------------------------------
 
-	if event is InputEventKey:
+# Dash, interact, zoom and pad attacks are actions (pad.gd), polled so a
+# trigger pull counts once rather than on every bit of travel
+func update_actions():
 
-		if event.is_pressed() and not event.is_echo():
+	# The press that closed a menu shouldn't also act in the game
+	var frame = Engine.get_physics_frames()
+	var just_unpaused = frame - last_physics_frame > 1
+	last_physics_frame = frame
+	if just_unpaused:
+		return
 
-			if event.keycode == KEY_SHIFT:
+	if Input.is_action_just_pressed("dash"):
+		try_dash()
 
-				try_dash()
+	if Input.is_action_just_pressed("interact") and interact_target:
+		interact_target.interact(self)
 
-			elif event.keycode == KEY_E and interact_target:
+	# Zoom moved off the wheel, which now attacks
+	if Input.is_action_just_pressed("zoom_in"):
+		current_zoom = clamp(current_zoom - zoom_speed, min_zoom, max_zoom)
+	elif Input.is_action_just_pressed("zoom_out"):
+		current_zoom = clamp(current_zoom + zoom_speed, min_zoom, max_zoom)
 
-				interact_target.interact(self)
-
-		# Zoom moved off the wheel, which now attacks
-		if event.is_pressed():
-
-			if event.keycode == KEY_EQUAL or event.keycode == KEY_KP_ADD:
-
-				current_zoom = clamp(current_zoom - zoom_speed, min_zoom, max_zoom)
-
-			elif event.keycode == KEY_MINUS or event.keycode == KEY_KP_SUBTRACT:
-
-				current_zoom = clamp(current_zoom + zoom_speed, min_zoom, max_zoom)
+	for kind in PAD_MOVES:
+		if Input.is_action_just_pressed(PAD_MOVES[kind]):
+			request_attack(kind)
 
 
 # ============================================================
@@ -282,7 +291,9 @@ func _physics_process(delta):
 	# JUMP
 	# --------------------------------------------------------
 
-	if Input.is_key_pressed(KEY_SPACE):
+	update_actions()
+
+	if Input.is_action_pressed("jump"):
 
 		if is_on_floor():
 
@@ -290,25 +301,11 @@ func _physics_process(delta):
 
 
 	# --------------------------------------------------------
-	# WASD MOVEMENT (screen-relative)
+	# WASD / LEFT STICK MOVEMENT (screen-relative)
 	# --------------------------------------------------------
 
-	var input_dir = Vector2.ZERO
-
-	if Input.is_key_pressed(KEY_W) or Input.is_key_pressed(KEY_UP):
-		input_dir.y -= 1
-
-	if Input.is_key_pressed(KEY_S) or Input.is_key_pressed(KEY_DOWN):
-		input_dir.y += 1
-
-	if Input.is_key_pressed(KEY_A) or Input.is_key_pressed(KEY_LEFT):
-		input_dir.x -= 1
-
-	if Input.is_key_pressed(KEY_D) or Input.is_key_pressed(KEY_RIGHT):
-		input_dir.x += 1
-
-
-	var direction_2d = input_dir.normalized()
+	# A stick gives partial tilt for a slower walk; keys are always full
+	var direction_2d = Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
 	# Rotate input by the camera yaw so W is always "up" on screen
 	var direction = iso_basis() * Vector3(
@@ -343,13 +340,24 @@ func _physics_process(delta):
 		velocity.z = move_toward(velocity.z, 0, speed)
 
 
-	# Aim at the mouse cursor
-	var target = mouse_ground_point()
-	var to_target = target - global_position
-	to_target.y = 0
+	if Pad.using_pad:
 
-	if to_target.length() > 0.1:
-		aim_dir = to_target.normalized()
+		# Right stick aims; without it Veyl faces where vae walks
+		var stick = Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
+		if stick.length() > AIM_STICK_DEADZONE:
+			aim_dir = (iso_basis() * Vector3(stick.x, 0, stick.y)).normalized()
+		elif direction != Vector3.ZERO:
+			aim_dir = Vector3(direction.x, 0, direction.z).normalized()
+
+	else:
+
+		# Aim at the mouse cursor
+		var target = mouse_ground_point()
+		var to_target = target - global_position
+		to_target.y = 0
+
+		if to_target.length() > 0.1:
+			aim_dir = to_target.normalized()
 
 	update_sprite_facing()
 	update_interact_target()
@@ -576,6 +584,8 @@ func perform_move(move: Dictionary):
 	var weapon = GameState.weapon()
 	var attack_range: float = weapon["range"] * move["range"]
 	var arc: float = move["arc"]
+	if Pad.using_pad:
+		aim_assist(attack_range)
 	attack_timer = weapon["cooldown"] * move["cooldown"]
 	Sfx.play("attack", 0.0, SWING_PITCH.get(move["name"], 1.0))
 
@@ -657,14 +667,17 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.85, 0.4), 28)
 		hit_stop(0.12)
 		shake = max(shake, 0.6)
+		Pad.rumble(0.6, 0.8, 0.18)
 	elif heavy:
 		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.6, 0.2), 20)
 		hit_stop(0.08)
 		shake = max(shake, 0.35)
+		Pad.rumble(0.5, 0.4, 0.12)
 	else:
 		HitSpark.spawn(get_parent(), spark_at, spark_dir, Color(1.0, 0.5, 0.15), 12)
 		hit_stop(0.045)
 		shake = max(shake, 0.15)
+		Pad.rumble(0.35, 0.0, 0.07)
 
 	var away = enemy.global_position - global_position
 	away.y = 0
@@ -684,6 +697,29 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		launch = 0.0
 
 	enemy.apply_impact(push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
+
+
+# A stick can't point as precisely as a mouse, so swing at the closest
+# enemy roughly where Veyl is aiming
+func aim_assist(attack_range: float):
+
+	var best: Node3D = null
+	var best_dist = attack_range + 2.0
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var offset = enemy.global_position - global_position
+		offset.y = 0
+		var dist = offset.length() - enemy.radius
+		if dist > best_dist or offset.length() < 0.01:
+			continue
+		if rad_to_deg(aim_dir.angle_to(offset.normalized())) > AIM_ASSIST_DEGREES:
+			continue
+		best = enemy
+		best_dist = dist
+
+	if best:
+		var offset = best.global_position - global_position
+		aim_dir = Vector3(offset.x, 0, offset.z).normalized()
+		update_sprite_facing()
 
 
 # Freeze the game for a moment so the hit has weight. Overlapping hits
@@ -740,6 +776,7 @@ func take_damage(amount: int, from: Vector3):
 
 	health = max(health - amount, 0.0)
 	invuln_timer = 0.3
+	Pad.rumble(0.4, 0.7, 0.2)
 	if combo.count > 0:
 		combo.drop()
 		emit_combo()

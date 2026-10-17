@@ -9,6 +9,7 @@ const UI = preload("res://ui_kit.gd")
 const CHARS_PER_SECOND = 45.0
 
 var speaker_label: Label
+var hint: Label
 var text_label: Label
 var lines: Array = []
 var index: int = 0
@@ -39,7 +40,7 @@ func _ready():
 	text_label.custom_minimum_size = Vector2(780, 60)
 	box.add_child(text_label)
 
-	var hint = UI.label("[E] continue", 14, UI.MUTED)
+	hint = UI.label("", 14, UI.MUTED)
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	box.add_child(hint)
 
@@ -47,6 +48,7 @@ func _ready():
 func start(speaker: String, new_lines: Array, done: Callable = Callable()):
 
 	speaker_label.text = speaker
+	hint.text = "[%s] continue" % Pad.glyph("interact")
 	lines = new_lines
 	index = 0
 	on_done = done
@@ -68,8 +70,8 @@ func _input(event):
 		return
 
 	var advance = false
-	if event is InputEventKey and event.pressed and not event.echo:
-		advance = event.keycode in [KEY_E, KEY_SPACE, KEY_ENTER]
+	if event.is_action_pressed("interact") or event.is_action_pressed("jump") or event.is_action_pressed("ui_accept"):
+		advance = true
 	elif event is InputEventMouseButton and event.pressed:
 		advance = event.button_index == MOUSE_BUTTON_LEFT
 

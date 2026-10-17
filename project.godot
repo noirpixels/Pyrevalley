@@ -20,6 +20,7 @@ config/icon="res://icon.svg"
 CodexData="*uid://bsrkncllfswql"
 GameState="*res://game_state.gd"
 Sfx="*res://sfx.gd"
+Pad="*res://pad.gd"
 
 [display]
 

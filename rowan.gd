@@ -215,4 +215,4 @@ func interact(_player):
 
 
 func prompt_text() -> String:
-	return "[E] Talk to Rowan"
+	return "[%s] Talk to Rowan" % Pad.glyph("interact")

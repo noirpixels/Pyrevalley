@@ -7,6 +7,7 @@ signal closed
 const UI = preload("res://ui_kit.gd")
 
 var list: VBoxContainer
+var close_button: Button
 
 
 func _ready():
@@ -28,7 +29,8 @@ func _ready():
 	list.add_theme_constant_override("separation", 10)
 	box.add_child(list)
 
-	box.add_child(UI.button("CLOSE  [I]", close))
+	close_button = UI.button("CLOSE", close)
+	box.add_child(close_button)
 
 	GameState.inventory_changed.connect(refresh)
 
@@ -36,6 +38,7 @@ func _ready():
 func open():
 
 	refresh()
+	close_button.text = "CLOSE  [%s]" % Pad.glyph("inventory")
 	visible = true
 
 

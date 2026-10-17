@@ -20,6 +20,8 @@ var buttons: HBoxContainer
 var boss_box: VBoxContainer
 var boss_bar: ProgressBar
 var prompt: Label
+var hint: Label
+var hint_fade: Tween
 var toasts: VBoxContainer
 var message: Label
 var fade_rect: ColorRect
@@ -65,11 +67,12 @@ func _ready():
 	buttons = HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_END
 	right.add_child(buttons)
-	for b in [["Inventory [I]", inventory_pressed], ["Codex [C]", codex_pressed], ["Pause [Esc]", pause_pressed]]:
+	for b in [["Inventory", "inventory", inventory_pressed], ["Codex", "codex", codex_pressed], ["Pause", "pause", pause_pressed]]:
 		var button = Button.new()
-		button.text = b[0]
+		button.set_meta("label", b[0])
+		button.set_meta("action", b[1])
 		button.focus_mode = Control.FOCUS_NONE
-		button.pressed.connect(b[1].emit)
+		button.pressed.connect(b[2].emit)
 		buttons.add_child(button)
 
 	# ---- Boss bar (bottom-center, out of the boss's way) ----
@@ -108,12 +111,13 @@ func _ready():
 	add_child(prompt)
 
 	# ---- Controls hint (bottom-left), fades after a while ----
-	var hint = UI.label("WASD move · Mouse aim · Left/right click strike · Scroll up launch · Scroll down slam · Space jump · Shift dodge · E interact · -/= zoom", 14, UI.MUTED)
+	hint = UI.label("", 14, UI.MUTED)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	hint.offset_left = 24
 	hint.offset_top = -36
 	add_child(hint)
-	create_tween().tween_property(hint, "modulate:a", 0.0, 2.0).set_delay(30.0)
+	show_controls()
+	Pad.mode_changed.connect(_on_pad_mode_changed)
 
 	# ---- Respawn fade + message ----
 	fade_rect = ColorRect.new()
@@ -214,6 +218,25 @@ func update_quest():
 		_:
 			quest_title.text = "THE ASHBOUND"
 			quest_text.text = "Face what waits beyond the Deep Forest."
+
+
+# Names the keys or pad buttons in use, and shows the hint again for a while
+func show_controls():
+
+	hint.text = Pad.controls_hint()
+	hint.modulate.a = 1.0
+	if hint_fade:
+		hint_fade.kill()
+	hint_fade = create_tween()
+	hint_fade.tween_property(hint, "modulate:a", 0.0, 2.0).set_delay(30.0)
+	for button in buttons.get_children():
+		button.text = "%s [%s]" % [button.get_meta("label"), Pad.glyph(button.get_meta("action"))]
+
+
+func _on_pad_mode_changed():
+
+	show_controls()
+	_on_interact_target_changed(player.interact_target if player else null)
 
 
 func set_buttons_visible(show: bool):

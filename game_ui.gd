@@ -1,7 +1,8 @@
 extends CanvasLayer
 
 # Owns every in-game screen and decides when the game is paused.
-# Keys: Esc pause / close, I inventory, C codex.
+# Actions (pad.gd): pause (Esc / +) pause or close, inventory (I / -),
+# codex (C / L), and a pad's back button closes the open screen.
 
 const Hud = preload("res://hud.gd")
 const DialogueBox = preload("res://dialogue_box.gd")
@@ -66,25 +67,28 @@ func _ready():
 
 func _input(event):
 
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
 	if ending.visible or dialogue.visible:
 		return
 
-	match event.keycode:
-		KEY_ESCAPE:
-			if codex.visible:
-				codex.close()
-			elif inventory.visible:
-				inventory.close()
-			else:
-				toggle_pause()
-		KEY_I:
-			toggle_inventory()
-		KEY_C:
-			toggle_codex()
-		_:
-			return
+	if event.is_action_pressed("pause"):
+		if codex.visible:
+			codex.close()
+		elif inventory.visible:
+			inventory.close()
+		else:
+			toggle_pause()
+	elif event.is_action_pressed("inventory"):
+		toggle_inventory()
+	elif event.is_action_pressed("codex"):
+		toggle_codex()
+	elif event is InputEventJoypadButton and event.is_action_pressed("ui_cancel") and (inventory.visible or pause_menu.visible):
+		# The codex has its own BACK button, which pad.gd presses
+		if inventory.visible:
+			inventory.close()
+		else:
+			toggle_pause()
+	else:
+		return
 
 	get_viewport().set_input_as_handled()
 
@@ -97,6 +101,8 @@ func update_paused():
 
 	var paused = dialogue.visible or inventory.visible or pause_menu.visible or codex.visible or ending.visible
 	get_tree().paused = paused
+	# Let pad.gd hand focus to whichever screen is now on top
+	get_viewport().gui_release_focus()
 	hud.set_buttons_visible(not paused)
 
 
@@ -117,6 +123,7 @@ func toggle_inventory():
 	if inventory.visible:
 		inventory.close()
 	else:
+		pause_menu.visible = false
 		inventory.open()
 	update_paused()
 
@@ -126,6 +133,7 @@ func toggle_codex():
 	if codex.visible:
 		codex.close()
 	else:
+		pause_menu.visible = false
 		codex.open()
 	update_paused()
 
