@@ -28,9 +28,10 @@ const BODY_TEXTURE = preload("res://NPCs/rowan.png")
 const GLOW_TEXTURE = preload("res://NPCs/rowan_glow.png")
 const SPRITE_PIXEL_SIZE = 0.0375
 const SpritePose = preload("res://sprite_pose.gd")
+const InkSprite = preload("res://ink_sprite.gd")
+const EmberWall = preload("res://ember_wall.gd")
 
 var fire_light: OmniLight3D
-var flames: Array[MeshInstance3D] = []
 var time: float = 0.0
 var body: Sprite3D
 # Counts down after Veyl talks to him: a little bob of greeting
@@ -47,7 +48,7 @@ func build_body():
 
 	# Painted sprite (tools/make_npc_sprites.py), same pixel density as Veyl
 	body = Sprite3D.new()
-	body.texture = BODY_TEXTURE
+	body.texture = InkSprite.ink(BODY_TEXTURE)
 	body.pixel_size = SPRITE_PIXEL_SIZE
 	body.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
 	body.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
@@ -137,40 +138,18 @@ func build_body():
 		wood.rotation = Vector3(deg_to_rad(80), angle, 0)
 		add_child(wood)
 
-	flames = []
-	for layer in [[Color(1.0, 0.4, 0.05), 0.85, 1.9], [Color(1.0, 0.8, 0.3), 0.45, 1.2]]:
-		var mat = StandardMaterial3D.new()
-		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		mat.albedo_color = layer[0]
-		var flame = MeshInstance3D.new()
-		var cone = CylinderMesh.new()
-		cone.top_radius = 0.0
-		cone.bottom_radius = layer[1]
-		cone.height = layer[2]
-		cone.radial_segments = 7
-		flame.mesh = cone
-		flame.material_override = mat
-		flame.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		flame.position = fire_pos + Vector3(0, 0.35 + layer[2] / 2.0, 0)
-		add_child(flame)
-		flames.append(flame)
-
-	fire_light = OmniLight3D.new()
-	fire_light.light_color = Color(1.0, 0.5, 0.15)
-	fire_light.light_energy = 3.0
+	# Inked flames, the same as the ember walls
+	var fire = EmberWall.new(2.2, 2.8, true)
+	fire.position = fire_pos + Vector3(0, 0.2, 0)
+	add_child(fire)
+	fire_light = fire.light
 	fire_light.omni_range = 14.0
-	fire_light.position = Vector3(-3.5, 2.5, 1.5)
-	add_child(fire_light)
 
 
 func _process(delta):
 
 	time += delta
 	fire_light.light_energy = 3.0 + sin(time * 11.0) * 0.3 + sin(time * 7.3) * 0.2
-	for i in flames.size():
-		var flicker = 1.0 + sin(time * (9.0 + i * 4.0)) * 0.08 + sin(time * 13.7 + i) * 0.05
-		flames[i].scale = Vector3(1.0 / flicker, flicker, 1.0 / flicker)
-		flames[i].rotation.y = time * (0.6 - i * 1.4)
 
 	# Slow breathing and a gentle sway by the fire
 	greet_timer = max(greet_timer - delta, 0.0)

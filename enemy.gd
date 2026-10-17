@@ -15,6 +15,7 @@ const FloatingText = preload("res://floating_text.gd")
 const ItemPickup = preload("res://item_pickup.gd")
 const EmberPickup = preload("res://ember_pickup.gd")
 const SpritePose = preload("res://sprite_pose.gd")
+const InkSprite = preload("res://ink_sprite.gd")
 
 const PLAYER_RADIUS = 2.5
 # Dizzy meter: hits from alternating sides rattle a creature far more than
@@ -120,7 +121,7 @@ func setup(creature: Dictionary, id: String = ""):
 	move_speed = 1.5 + creature["speed"] * 0.2
 
 	# Collision is a cylinder roughly the size of the sprite
-	body_texture = load(creature["sprite"])
+	body_texture = InkSprite.ink(load(creature["sprite"]))
 	radius = 1.4 * creature["size"]
 	height = body_texture.get_height() * SPRITE_PIXEL_SIZE * 0.9
 

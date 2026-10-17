@@ -5,6 +5,8 @@ extends Node3D
 # to the Ashbound Arena (z ~ -135).
 # Handles the level bounds, atmosphere and music.
 
+const InkPost = preload("res://ink_post.gd")
+
 @export var light_path: NodePath = ^"../DirectionalLight3D"
 @export var environment_path: NodePath = ^"../WorldEnvironment"
 
@@ -36,6 +38,7 @@ func _ready():
 
 	build_bounds()
 	build_embers()
+	add_child(InkPost.new())
 	Sfx.play_music("forest")
 
 

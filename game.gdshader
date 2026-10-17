@@ -116,6 +116,10 @@ void fragment() {
 	float edge = smoothstep(half_width - 6.0, half_width + 4.0, abs(local_pos.x));
 	col = mix(col, col * vec3(0.38, 0.36, 0.32), edge);
 
+	// Muted earth tones; the post pass keeps vivid orange for embers only
+	float grey = dot(col, vec3(0.299, 0.587, 0.114));
+	col = mix(vec3(grey), col, 0.6);
+
 	ALBEDO = col;
 	ROUGHNESS = 1.0;
 

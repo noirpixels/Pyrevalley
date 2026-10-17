@@ -8,6 +8,7 @@ extends Node
 # Viewport size. Veyl's feet sit on the bottom edge, with room above and to
 # the sides for the sword.
 const SIZE = Vector2i(320, 288)
+const InkSprite = preload("res://ink_sprite.gd")
 
 # Cut lines per facing, in source pixels. Each arm is [rect, shoulder, hand];
 # the first arm holds the sword. Parts claim pixels in this order: arms,
@@ -318,11 +319,8 @@ static func mirror(angle: float, dir: float) -> float:
 
 func build_rig(def: Dictionary, source: Texture2D, sword_tex: Texture2D) -> Dictionary:
 
-	var img = source.get_image()
-	if img.is_compressed():
-		img.decompress()
-	img.clear_mipmaps()
-	img.convert(Image.FORMAT_RGBA8)
+	# Lit on the sun side before cutting, so cut lines don't get a rim
+	var img = InkSprite.ink_image(InkSprite.load_image(source), 0.45)
 	var w = img.get_width()
 	var h = img.get_height()
 

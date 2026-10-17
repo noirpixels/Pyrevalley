@@ -2,12 +2,14 @@ extends StaticBody3D
 
 # A wall of embers that blocks the path until the quest allows passage.
 
+const EmberWall = preload("res://ember_wall.gd")
+
 @export var width: float = 20.0
 # "quest_accepted" or "quest_complete"
 @export var opens_when: String = "quest_accepted"
 @export var sealed_text: String = "The path is sealed by embers."
 
-var mat: StandardMaterial3D
+var wall: EmberWall
 var label: Label3D
 
 
@@ -26,25 +28,8 @@ func _ready():
 	collision.position.y = 7.0
 	add_child(collision)
 
-	mat = StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 0.35, 0.05, 0.45)
-
-	var wall = MeshInstance3D.new()
-	var box = BoxMesh.new()
-	box.size = Vector3(width, 10.0, 0.6)
-	wall.mesh = box
-	wall.material_override = mat
-	wall.position.y = 5.0
+	wall = EmberWall.new(width)
 	add_child(wall)
-
-	var light = OmniLight3D.new()
-	light.light_color = Color(1.0, 0.4, 0.1)
-	light.light_energy = 2.0
-	light.omni_range = width * 0.6
-	light.position = Vector3(0, 4.0, 2.0)
-	add_child(light)
 
 	label = Label3D.new()
 	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -78,6 +63,4 @@ func _on_quest_changed():
 	collision_layer = 0
 	label.visible = false
 
-	var tween = create_tween()
-	tween.tween_property(mat, "albedo_color:a", 0.0, 1.2)
-	tween.tween_callback(queue_free)
+	wall.fade_to(0.0, 1.4).tween_callback(queue_free)

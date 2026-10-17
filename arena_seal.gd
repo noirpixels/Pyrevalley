@@ -8,10 +8,10 @@ extends StaticBody3D
 
 @export var width: float = 26.0
 
+const EmberWall = preload("res://ember_wall.gd")
+
 var collision: CollisionShape3D
-var mat: StandardMaterial3D
-var wall: MeshInstance3D
-var light: OmniLight3D
+var wall: EmberWall
 
 
 func _ready():
@@ -24,27 +24,9 @@ func _ready():
 	collision.disabled = true
 	add_child(collision)
 
-	mat = StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 0.3, 0.05, 0.0)
-
-	wall = MeshInstance3D.new()
-	var box = BoxMesh.new()
-	box.size = Vector3(width, 10.0, 0.6)
-	wall.mesh = box
-	wall.material_override = mat
-	wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	wall.position.y = 5.0
-	wall.visible = false
+	wall = EmberWall.new(width)
+	wall.strength = 0.0
 	add_child(wall)
-
-	light = OmniLight3D.new()
-	light.light_color = Color(1.0, 0.4, 0.1)
-	light.light_energy = 0.0
-	light.omni_range = width * 0.6
-	light.position = Vector3(0, 4.0, -2.0)
-	add_child(light)
 
 	GameState.boss_engaged.connect(func(_boss): close())
 	GameState.boss_disengaged.connect(open)
@@ -63,12 +45,9 @@ func close():
 			player.global_position = to_global(Vector3(local.x, local.y, -4.5))
 
 	collision.set_deferred("disabled", false)
-	wall.visible = true
 	Sfx.play("gate_open")
 	GameState.notify.emit("Embers seal the way behind you.")
-	var tween = create_tween()
-	tween.tween_property(mat, "albedo_color:a", 0.5, 0.6)
-	tween.parallel().tween_property(light, "light_energy", 2.0, 0.6)
+	wall.fade_to(1.0, 0.6)
 
 
 func open():
@@ -77,7 +56,4 @@ func open():
 		return
 
 	collision.set_deferred("disabled", true)
-	var tween = create_tween()
-	tween.tween_property(mat, "albedo_color:a", 0.0, 0.8)
-	tween.parallel().tween_property(light, "light_energy", 0.0, 0.8)
-	tween.tween_callback(func(): wall.visible = false)
+	wall.fade_to(0.0, 0.8)
