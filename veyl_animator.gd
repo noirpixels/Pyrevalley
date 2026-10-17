@@ -2,9 +2,11 @@ extends Node
 
 # Veyl's procedural animation: breathing, walking, jumping, dashing, sword
 # swings, flinching and falling over. It only moves the sprite, never the
-# body, so it can't change how the game plays.
+# body, so it can't change how the game plays. The limbs and sword are a
+# cut-out puppet (veyl_puppet.gd); this script moves the sprite as a whole.
 
 const SpritePose = preload("res://sprite_pose.gd")
+const VeylPuppet = preload("res://veyl_puppet.gd")
 
 # Radians of step cycle per metre walked (two steps per half turn)
 const STEP_RATE = 1.0
@@ -13,6 +15,7 @@ const GHOST_GAP = 0.04
 
 var player: CharacterBody3D
 var sprite: Sprite3D
+var puppet: VeylPuppet
 var base_scale: float
 var feet: Vector3
 
@@ -36,11 +39,6 @@ var kick_squash: Vector2 = Vector2.ONE
 var kick_lift: float = 0.0
 var kick_shift: float = 0.0
 
-# Aerial flip, added on top of the lean
-var flip_time: float = 0.3
-var flip_timer: float = 0.0
-var flip_dir: float = 1.0
-
 
 func _init(body: CharacterBody3D, body_sprite: Sprite3D):
 
@@ -48,6 +46,15 @@ func _init(body: CharacterBody3D, body_sprite: Sprite3D):
 	sprite = body_sprite
 	base_scale = sprite.scale.x
 	feet = sprite.position - Vector3(0, sprite.texture.get_height() / 2.0 * sprite.pixel_size * base_scale, 0)
+
+	# The sprite shows the puppet from here on
+	puppet = VeylPuppet.new({
+		"front": player.texture_front,
+		"back": player.texture_back,
+		"right": player.texture_right,
+	})
+	add_child(puppet)
+	sprite.texture = puppet.texture
 	SpritePose.pin_to_feet(sprite)
 
 
@@ -84,16 +91,14 @@ func _process(delta):
 		target_lean = -moving_x * 0.1
 
 	elif speed > 0.5:
+		# The puppet's legs do the stepping; the sprite just leans in
 		step_phase += delta * speed * STEP_RATE
-		var step = abs(sin(step_phase))
-		target_lift = step * 0.3
-		target_lean = -moving_x * 0.12 + sin(step_phase) * 0.05
-		target_squash = Vector2(1.0 + 0.05 * (1.0 - step), 1.0 - 0.05 * (1.0 - step))
+		target_lean = -moving_x * 0.06
 
 	else:
 		step_phase = 0.0
-		var breath = sin(time * 2.4) * 0.02
-		target_squash = Vector2(1.0 - breath * 0.5, 1.0 + breath)
+
+	puppet.animate(delta, step_phase, on_floor and speed > 0.5 and not player.dead, not on_floor, time)
 
 	# Thump on landing
 	if on_floor and not was_on_floor and not player.dead:
@@ -115,36 +120,42 @@ func _process(delta):
 	lift = lerp(lift, target_lift, blend)
 	shift = lerp(shift, target_shift, blend)
 
-	# A whole turn looks the same as none, so the flip can just stop at the end
-	var flip = 0.0
-	if flip_timer > 0.0:
-		flip_timer = max(flip_timer - delta, 0.0)
-		flip = flip_dir * TAU * smoothstep(0.0, 1.0, 1.0 - flip_timer / flip_time)
-
-	SpritePose.apply(sprite, lean + flip, squash, base_scale)
+	SpritePose.apply(sprite, lean, squash, base_scale)
 	var offset_world = Vector3.UP * lift + screen_right() * shift
 	sprite.position = feet + player.global_basis.inverse() * offset_world
 
 
-# Called by the player as each move swings
+# Called by the player as each move swings. The puppet swings the sword;
+# the sprite only lunges a little toward the cut.
 func swing(kind: String, aim: Vector3):
 
 	var aim_x = SpritePose.screen_x(sprite, aim)
+	var toward = sign_or_one(aim_x)
 
 	match kind:
 		"left":
-			kick(0.2, 0.3, Vector2(1.1, 0.92), 0.0, -0.5)
+			toward = -1.0
+			kick(0.2, 0.06, Vector2.ONE, 0.0, -0.2)
 		"right":
-			kick(0.2, -0.3, Vector2(1.1, 0.92), 0.0, 0.5)
+			toward = 1.0
+			kick(0.2, -0.06, Vector2.ONE, 0.0, 0.2)
 		"up":
-			kick(0.22, -aim_x * 0.1, Vector2(0.85, 1.22), 0.6, aim_x * 0.4)
+			kick(0.25, 0.0, Vector2(0.96, 1.05), 0.25, toward * 0.15)
 		"down":
-			kick(0.22, 0.0, Vector2(1.3, 0.72), 0.0, aim_x * 0.4)
+			kick(0.25, 0.0, Vector2(1.06, 0.94), 0.0, toward * 0.15)
 		"aerial":
-			# A full flip into the slam
-			flip_timer = flip_time
-			flip_dir = -sign_or_one(aim_x)
-			kick(0.3, 0.0, Vector2(1.2, 0.85), 0.0, aim_x * 0.4)
+			kick(0.3, 0.0, Vector2(1.06, 0.94), 0.0, toward * 0.15)
+
+	# The puppet works unflipped, so a flipped sprite swings the other way
+	var dir = -toward if sprite.flip_h else toward
+	puppet.swing("side" if kind == "left" or kind == "right" else kind, dir)
+
+
+# Which art Veyl shows ("front", "back" or "right"); flip mirrors it to face left
+func face(which: String, flip: bool):
+
+	puppet.set_facing(which)
+	sprite.flip_h = flip
 
 
 # Snap away from whatever hit Veyl
@@ -172,7 +183,8 @@ func kick(duration: float, k_lean: float, k_squash: Vector2, k_lift: float, k_sh
 func spawn_ghost():
 
 	var ghost = Sprite3D.new()
-	ghost.texture = sprite.texture
+	# A still copy; the puppet's own texture keeps moving
+	ghost.texture = ImageTexture.create_from_image(sprite.texture.get_image())
 	ghost.flip_h = sprite.flip_h
 	ghost.pixel_size = sprite.pixel_size
 	ghost.offset = sprite.offset

@@ -507,28 +507,25 @@ func mouse_ground_point() -> Vector3:
 	return hit
 
 
-# Front / back / side texture based on aim relative to the camera
+# Front / back / side art based on aim relative to the camera
 func update_sprite_facing():
 
-	if not sprite:
+	if not animator:
 		return
 
 	var local = iso_basis().inverse() * aim_dir
 
-	if abs(local.x) > abs(local.z) and texture_right:
+	if abs(local.x) > abs(local.z):
 
-		sprite.texture = texture_right
-		sprite.flip_h = local.x < 0
+		animator.face("right", local.x < 0)
 
-	elif local.z > 0 and texture_front:
+	elif local.z > 0:
 
-		sprite.texture = texture_front
-		sprite.flip_h = false
+		animator.face("front", false)
 
-	elif texture_back:
+	else:
 
-		sprite.texture = texture_back
-		sprite.flip_h = false
+		animator.face("back", false)
 
 
 # ============================================================
