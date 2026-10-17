@@ -8,8 +8,8 @@ render_mode cull_back, specular_disabled;
 global uniform vec3 player_position;
 
 uniform vec4 albedo : source_color = vec4(1.0);
-uniform float fade_radius = 10.0;
-uniform float fade_amount : hint_range(0.0, 1.0) = 0.8;
+uniform float fade_radius = 12.0;
+uniform float fade_amount : hint_range(0.0, 1.0) = 0.97;
 
 const float BAYER[16] = float[](
 	0.0, 8.0, 2.0, 10.0,

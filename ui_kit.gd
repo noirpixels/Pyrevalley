@@ -18,6 +18,13 @@ static func label(text: String, size: int, color: Color = TEXT) -> Label:
 	return l
 
 
+# Display text: names, titles, big moments
+static func title(text: String, size: int, color: Color = TEXT) -> Label:
+	var l = label(text, size, color)
+	l.add_theme_constant_override("outline_size", 12)
+	return l
+
+
 static func panel_style() -> StyleBoxFlat:
 	var style = StyleBoxFlat.new()
 	style.bg_color = Color(0.07, 0.05, 0.05, 0.92)

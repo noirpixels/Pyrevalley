@@ -13,6 +13,7 @@ const ComboTracker = preload("res://combo_tracker.gd")
 const VeylAnimator = preload("res://veyl_animator.gd")
 const HitSpark = preload("res://hit_spark.gd")
 const SpritePose = preload("res://sprite_pose.gd")
+const InkPost = preload("res://ink_post.gd")
 
 # An attack released this close to the end of the cooldown waits for it;
 # one released earlier is a fumble and breaks the combo
@@ -28,6 +29,13 @@ const PAN_THRESHOLD = 1.0
 var scroll_flip: bool = OS.get_name() == "macOS"
 # Game speed during hit-stop, the brief freeze when a hit lands
 const HIT_STOP_SCALE = 0.05
+# Seconds from the button press to the blade connecting, matching the
+# strike frame of each swing in veyl_puppet.gd
+const IMPACT_DELAY = {"left": 0.07, "right": 0.07, "up": 0.09, "down": 0.11, "aerial": 0.12}
+# A grounded swing steps Veyl forward into it, unless a target is already close
+const LUNGE_SPEED = 13.0
+const LUNGE_TIME = 0.08
+const LUNGE_SKIP_DIST = 3.5
 # Swing sound pitch per move: slams lower, launches higher
 const SWING_PITCH = {"left": 1.0, "right": 1.05, "up": 1.2, "down": 0.8, "aerial": 0.75}
 # Height (world units) where Veyl's shadow is at its smallest and faintest
@@ -109,6 +117,11 @@ var scroll_quiet: float = 0.0
 var pan_amount: float = 0.0
 # Physics frame Veyl last ran on, to spot the first frame after a pause
 var last_physics_frame: int = 0
+# Swings waiting for the blade to connect: {"move", "aim", "time"}
+var pending_swings: Array = []
+var lunge_timer: float = 0.0
+var lunge_dir: Vector3 = Vector3.ZERO
+var hit_stop_scale: float = 1.0
 
 @onready var sprite: Sprite3D = find_child("CharacterSprite")
 @onready var camera_boom: Node3D = find_child("CameraBoom")
@@ -261,7 +274,9 @@ func update_actions():
 func _physics_process(delta):
 
 	attack_timer = max(attack_timer - delta, 0.0)
+	lunge_timer = max(lunge_timer - delta, 0.0)
 	update_combat(delta)
+	update_pending_swings(delta)
 	dash_timer = max(dash_timer - delta, 0.0)
 	dash_cooldown_timer = max(dash_cooldown_timer - delta, 0.0)
 	invuln_timer = max(invuln_timer - delta, 0.0)
@@ -328,6 +343,11 @@ func _physics_process(delta):
 			var steer = 1.0 - exp(-AIR_STEER * delta)
 			velocity.x = lerp(velocity.x, direction.x * speed, steer)
 			velocity.z = lerp(velocity.z, direction.z * speed, steer)
+
+	elif lunge_timer > 0.0:
+
+		velocity.x = lunge_dir.x * LUNGE_SPEED
+		velocity.z = lunge_dir.z * LUNGE_SPEED
 
 	elif direction != Vector3.ZERO:
 
@@ -589,6 +609,43 @@ func perform_move(move: Dictionary):
 	attack_timer = weapon["cooldown"] * move["cooldown"]
 	Sfx.play("attack", 0.0, SWING_PITCH.get(move["name"], 1.0))
 
+	# The blade connects a moment later, on the swing's strike frame
+	pending_swings.append({"move": move, "aim": aim_dir, "time": IMPACT_DELAY.get(move["name"], 0.07)})
+
+	if is_on_floor() and nearest_enemy_distance() > LUNGE_SKIP_DIST:
+		lunge_timer = LUNGE_TIME
+		lunge_dir = aim_dir
+
+	if animator:
+		animator.swing(move["name"], aim_dir)
+
+
+func update_pending_swings(delta: float):
+
+	for swing in pending_swings.duplicate():
+		swing["time"] -= delta
+		if swing["time"] <= 0.0:
+			pending_swings.erase(swing)
+			if not dead:
+				resolve_swing(swing["move"], swing["aim"])
+
+
+func nearest_enemy_distance() -> float:
+
+	var best = INF
+	for enemy in get_tree().get_nodes_in_group("enemies"):
+		var offset = enemy.global_position - global_position
+		offset.y = 0
+		best = min(best, offset.length() - enemy.radius)
+	return best
+
+
+# The blade connects: find what's in the arc and hit it
+func resolve_swing(move: Dictionary, aim: Vector3):
+
+	var weapon = GameState.weapon()
+	var attack_range: float = weapon["range"] * move["range"]
+	var arc: float = move["arc"]
 	var half_arc = deg_to_rad(arc) / 2.0
 	var hits = []
 
@@ -600,7 +657,7 @@ func perform_move(move: Dictionary):
 		if offset.length() > attack_range + enemy.radius:
 			continue
 
-		if offset.length() > 0.01 and aim_dir.angle_to(offset.normalized()) > half_arc:
+		if offset.length() > 0.01 and aim.angle_to(offset.normalized()) > half_arc:
 			continue
 
 		hits.append(enemy)
@@ -626,7 +683,7 @@ func perform_move(move: Dictionary):
 		slash.color = Color(1.0, 0.8, 0.3, 0.75)
 	get_parent().add_child(slash)
 	slash.global_position = Vector3(global_position.x, 0.1, global_position.z)
-	slash.global_basis = Basis.looking_at(aim_dir)
+	slash.global_basis = Basis.looking_at(aim)
 	match move["name"]:
 		"down", "aerial":
 			slash.style = "ring"
@@ -636,9 +693,6 @@ func perform_move(move: Dictionary):
 			# Run the sweep toward the side of the screen the move swings to
 			var local_right = SpritePose.screen_x(self, slash.global_basis.x)
 			slash.sweep_dir = 1.0 if local_right * move["side"] >= 0.0 else -1.0
-
-	if animator:
-		animator.swing(move["name"], aim_dir)
 
 
 # Health damage first, then the separate push / spin / dizzy / launch
@@ -658,6 +712,14 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 
 	if crit:
 		FloatingText.spawn(get_parent(), enemy.global_position + Vector3(0, enemy.height / 2.0 + 5.0, 0), "CRITICAL!", Color(1.0, 0.75, 0.2))
+
+	# A killing blow: the world slows, the page flashes
+	if enemy.health <= 0.0:
+		var boss = enemy.data.get("boss", false)
+		hit_stop(1.1 if boss else 0.3, 0.2)
+		shake = max(shake, 0.8 if boss else 0.45)
+		InkPost.flash(get_tree(), Color(1.0, 0.94, 0.82), 0.6 if boss else 0.3)
+		Pad.rumble(0.7, 0.9, 0.3)
 
 	# Heavier moves land harder: longer freeze, more shake, more sparks
 	var heavy = crit or move["launch"] != 0.0 or combo.finished(GameState.max_combo)
@@ -723,20 +785,24 @@ func aim_assist(attack_range: float):
 
 
 # Freeze the game for a moment so the hit has weight. Overlapping hits
-# extend the freeze rather than stacking.
-func hit_stop(duration: float):
+# extend the freeze rather than stacking; the slowest requested speed wins.
+# A kill uses a longer, gentler slow-motion (scale ~0.25).
+func hit_stop(duration: float, scale: float = HIT_STOP_SCALE):
 
 	var already_stopped = hit_stop_left > 0.0
 	hit_stop_left = max(hit_stop_left, duration)
+	hit_stop_scale = min(hit_stop_scale, scale) if already_stopped else scale
+	Engine.time_scale = hit_stop_scale
 	if already_stopped:
 		return
 
-	Engine.time_scale = HIT_STOP_SCALE
 	while hit_stop_left > 0.0:
 		var before = Time.get_ticks_usec()
 		await get_tree().process_frame
 		hit_stop_left -= (Time.get_ticks_usec() - before) / 1000000.0
+		Engine.time_scale = hit_stop_scale
 	hit_stop_left = 0.0
+	hit_stop_scale = 1.0
 	Engine.time_scale = 1.0
 
 

@@ -284,6 +284,55 @@ func show_message(text: String):
 	tween.tween_property(message, "modulate:a", 0.0, 0.6)
 
 
+# A boss's name across the screen, like a chapter heading in a comic:
+# black ink bands slide in top and bottom, the name stamps down
+func title_card(title: String, subtitle: String):
+
+	var card = Control.new()
+	UI.full_rect(card)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(card)
+
+	var bands = []
+	for top in [true, false]:
+		var band = ColorRect.new()
+		band.color = Color(0.02, 0.015, 0.025, 0.92)
+		band.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		band.set_anchors_preset(Control.PRESET_TOP_WIDE if top else Control.PRESET_BOTTOM_WIDE)
+		band.custom_minimum_size = Vector2(0, 110)
+		band.offset_bottom = 110 if top else 0
+		band.offset_top = 0 if top else -110
+		band.position.y += -110 if top else 110
+		card.add_child(band)
+		bands.append([band, band.position.y, band.position.y + (110 if top else -110)])
+
+	var box = VBoxContainer.new()
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	UI.full_rect(box)
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(box)
+	var name_label = UI.title(title.to_upper(), 84, UI.EMBER)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.pivot_offset = Vector2(400, 50)
+	box.add_child(name_label)
+	var sub_label = UI.label(subtitle, 24, UI.TEXT)
+	sub_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	box.add_child(sub_label)
+	name_label.modulate.a = 0.0
+	sub_label.modulate.a = 0.0
+
+	var tween = create_tween().set_parallel()
+	for b in bands:
+		tween.tween_property(b[0], "position:y", b[2], 0.35).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	name_label.scale = Vector2(1.6, 1.6)
+	tween.tween_property(name_label, "modulate:a", 1.0, 0.15).set_delay(0.3)
+	tween.tween_property(name_label, "scale", Vector2.ONE, 0.25).set_delay(0.3).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sub_label, "modulate:a", 1.0, 0.4).set_delay(0.7)
+	tween.chain().tween_interval(1.6)
+	tween.chain().tween_property(card, "modulate:a", 0.0, 0.6)
+	tween.chain().tween_callback(card.queue_free)
+
+
 func fade(alpha: float, duration: float):
 
 	var tween = create_tween()

@@ -106,6 +106,11 @@ func update_paused():
 	hud.set_buttons_visible(not paused)
 
 
+func boss_intro(title: String, subtitle: String):
+
+	hud.title_card(title, subtitle)
+
+
 func show_dialogue(speaker: String, lines: Array, on_done: Callable = Callable()):
 
 	dialogue.start(speaker, lines, on_done)

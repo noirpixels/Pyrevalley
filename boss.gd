@@ -9,6 +9,17 @@ extends "res://enemy.gd"
 # Dashing through an attack (invulnerable) is the intended answer.
 # Too heavy to launch, but alternating hits can daze it, which cancels
 # whatever it was winding up.
+# Every attack is drawn on the ground first (telegraph.gd) and lands when
+# the warning fills. It rises with a title card the first time Veyl
+# faces it, and at half health it roars, throws Veyl back and catches fire.
+
+const EmberWall = preload("res://ember_wall.gd")
+const InkPost = preload("res://ink_post.gd")
+# Seconds it rears up, the first time it sees Veyl
+const INTRO_TIME = 2.4
+# The roar at half health: untouchable while it lasts
+const PHASE_SHIFT_TIME = 1.6
+const PHASE_SHIFT_PUSH = 28.0
 
 const SLAM_RADIUS = 10.0
 const CHARGE_SPEED = 24.0
@@ -29,9 +40,8 @@ var enraged: bool = false
 var queued_slam: bool = false
 var followup: bool = false
 var engaged: bool = false
-var telegraph: MeshInstance3D
-var telegraph_mat: StandardMaterial3D
-var telegraph_tween: Tween
+var introduced: bool = false
+var phase_shift_left: float = 0.0
 
 
 func _ready():
@@ -54,7 +64,6 @@ func _ready():
 
 	super()
 	move_speed *= CHASE_SPEED_SCALE
-	build_telegraph()
 
 	var light = OmniLight3D.new()
 	light.light_color = Color(1.0, 0.35, 0.05)
@@ -62,25 +71,6 @@ func _ready():
 	light.omni_range = 14.0
 	light.position.y = height * 0.3
 	add_child(light)
-
-
-func build_telegraph():
-
-	var disc = CylinderMesh.new()
-	disc.top_radius = SLAM_RADIUS
-	disc.bottom_radius = SLAM_RADIUS
-	disc.height = 0.05
-
-	telegraph_mat = StandardMaterial3D.new()
-	telegraph_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	telegraph_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	telegraph_mat.albedo_color = Color(1.0, 0.15, 0.05, 0.0)
-
-	telegraph = MeshInstance3D.new()
-	telegraph.mesh = disc
-	telegraph.material_override = telegraph_mat
-	telegraph.position.y = -height / 2.0 + 0.1
-	add_child(telegraph)
 
 
 # ============================================================
@@ -92,8 +82,16 @@ func enter_state(new_state: State):
 	super(new_state)
 
 	if new_state == State.DIZZY:
-		cancel_telegraph()
 		queued_slam = false
+
+	# The first sighting: it rises and roars, and the fight is named
+	if new_state == State.DETECTED and not introduced:
+		introduced = true
+		state_timer = INTRO_TIME
+		Sfx.play("boss_roar")
+		get_tree().call_group("game_ui", "boss_intro", data["name"], "Chained heart of Emberwood")
+		if player:
+			player.shake = max(player.shake, 0.5)
 
 	if new_state == State.CHASE and not engaged:
 		engaged = true
@@ -168,7 +166,7 @@ func begin_attack():
 	# Too short to walk out of the slam ring (~0.55s at full speed plus
 	# reaction time), long enough to time a dash; the long recovery after
 	# each attack is the opening to hit back
-	var windup = {"slam": 0.6, "charge": 0.55, "eruption": 0.6}[attack_kind]
+	var windup = {"slam": 0.7, "charge": 0.6, "eruption": 0.6}[attack_kind]
 	followup = queued_slam
 	queued_slam = false
 	if followup:
@@ -177,13 +175,14 @@ func begin_attack():
 	state_timer = windup_time
 	charge_hit = false
 
+	clear_tele(true)
 	match attack_kind:
 		"slam":
-			cancel_telegraph()
-			telegraph_tween = create_tween()
-			telegraph_tween.tween_property(telegraph_mat, "albedo_color:a", 0.45, windup_time)
+			tele = Telegraph.circle(get_parent(), ground_point(global_position), SLAM_RADIUS, windup_time)
 		"charge":
 			charge_dir = flat(player.global_position - global_position).normalized()
+			var length = CHARGE_SPEED * (1.2 if enraged else 1.0) * CHARGE_TIME + radius
+			tele = Telegraph.lane(get_parent(), ground_point(global_position), charge_dir, length, radius * 2.0, windup_time)
 		"eruption":
 			start_eruption()
 
@@ -193,10 +192,8 @@ func perform_attack(dist: float):
 	Sfx.play("boss_attack")
 
 	if attack_kind == "slam":
-		cancel_telegraph()
-		telegraph_mat.albedo_color.a = 0.8
-		telegraph_tween = create_tween()
-		telegraph_tween.tween_property(telegraph_mat, "albedo_color:a", 0.0, 0.3)
+		clear_tele(false)
+		slam_effects()
 		if dist <= SLAM_RADIUS + PLAYER_RADIUS and not player.dead:
 			player.take_damage(
 				CodexData.calc_damage(data["attack"], player.defense),
@@ -206,13 +203,26 @@ func perform_attack(dist: float):
 			queued_slam = true
 			state_timer = 0.2
 	elif attack_kind == "charge":
+		clear_tele(false)
 		state_timer = CHARGE_TIME + recover_time
 
 
-func cancel_telegraph():
-	if telegraph_tween:
-		telegraph_tween.kill()
-	telegraph_mat.albedo_color.a = 0.0
+func ground_point(at: Vector3) -> Vector3:
+	return Vector3(at.x, global_position.y - height / 2.0, at.z)
+
+
+# Ash thrown up all round the ring, and the page shakes
+func slam_effects():
+
+	sprite_scale = Vector2(1.25, 0.75)
+	for i in 10:
+		var angle = TAU * i / 10.0
+		var at = ground_point(global_position) + Vector3(cos(angle), 0, sin(angle)) * SLAM_RADIUS * 0.85
+		AshBurst.spawn(get_parent(), at, 0.6)
+	if player:
+		player.shake = max(player.shake, 0.55)
+	InkPost.flash(get_tree(), Color(1.0, 0.6, 0.3), 0.18)
+	Pad.rumble(0.5, 0.8, 0.25)
 
 
 func attack_movement() -> Vector3:
@@ -255,36 +265,26 @@ func start_eruption():
 
 func spawn_eruption(where: Vector3):
 
-	var disc = CylinderMesh.new()
-	disc.top_radius = ERUPTION_RADIUS
-	disc.bottom_radius = ERUPTION_RADIUS
-	disc.height = 0.05
-	var mat = StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	mat.albedo_color = Color(1.0, 0.35, 0.05, 0.0)
-	var circle = MeshInstance3D.new()
-	circle.mesh = disc
-	circle.material_override = mat
-	circle.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	get_parent().add_child(circle)
-	circle.global_position = where
-
 	var delay = ERUPTION_DELAY * (0.9 if enraged else 1.0)
-	var tween = circle.create_tween()
-	tween.tween_property(mat, "albedo_color:a", 0.5, delay)
-	tween.tween_callback(erupt.bind(where, mat))
-	tween.tween_property(mat, "albedo_color:a", 0.0, 0.35)
-	tween.tween_callback(circle.queue_free)
+	var circle = Telegraph.circle(get_parent(), where, ERUPTION_RADIUS, delay)
+	get_tree().create_timer(delay, false).timeout.connect(erupt.bind(where, circle))
 
 
-func erupt(where: Vector3, mat: StandardMaterial3D):
+func erupt(where: Vector3, circle: Node):
 
-	if state == State.DEAD:
+	if is_instance_valid(circle):
+		circle.burst()
+	if state == State.DEAD or not is_inside_tree():
 		return
 
-	mat.albedo_color = Color(1.0, 0.75, 0.3, 0.9)
-	Sfx.play("boss_attack")
+	# A pillar of fire that burns out
+	var pillar = EmberWall.new(ERUPTION_RADIUS * 1.4, 7.0, true)
+	get_parent().add_child(pillar)
+	pillar.global_position = where
+	pillar.fade_to(0.0, 0.7).tween_callback(pillar.queue_free)
+	AshBurst.spawn(get_parent(), where, 0.5)
+
+	Sfx.play("eruption", -2.0, randf_range(0.9, 1.1))
 	if player and not player.dead and flat(player.global_position - where).length() <= ERUPTION_RADIUS + 1.0:
 		player.take_damage(
 			CodexData.calc_damage(data["attack"] * 0.8, player.defense),
@@ -294,25 +294,64 @@ func erupt(where: Vector3, mat: StandardMaterial3D):
 
 func take_damage(amount: int, from: Vector3):
 
+	# Untouchable while it roars into its second phase
+	if phase_shift_left > 0.0:
+		return
+
 	super(amount, from)
 
 	# Too heavy to be knocked around
 	knockback = Vector3.ZERO
 
 	if not enraged and health > 0.0 and health < max_health * 0.5:
-		enraged = true
-		move_speed *= 1.2
-		GameState.notify.emit("The Ashbound burns brighter!")
-		glow_strength = 1.8
+		phase_shift()
+
+
+# Half health: it roars, throws Veyl back, the ground erupts all round it,
+# and it fights faster and harder from here on
+func phase_shift():
+
+	enraged = true
+	move_speed *= 1.2
+	glow_strength = 1.8
+	phase_shift_left = PHASE_SHIFT_TIME
+	clear_tele(true)
+	queued_slam = false
+	enter_state(State.HURT)
+	state_timer = PHASE_SHIFT_TIME
+	sprite_scale = Vector2(0.85, 1.25)
+
+	Sfx.play("boss_roar", 2.0, 0.85)
+	GameState.notify.emit("The Ashbound burns brighter!")
+	InkPost.flash(get_tree(), Color(1.0, 0.5, 0.2), 0.55)
+	Pad.rumble(0.8, 1.0, 0.6)
+	if player:
+		player.shake = max(player.shake, 0.9)
+		var away = flat(player.global_position - global_position)
+		if away.length() < SLAM_RADIUS * 1.5:
+			player.velocity += away.normalized() * PHASE_SHIFT_PUSH + Vector3.UP * 8.0
+
+	for i in 8:
+		var angle = TAU * i / 8.0
+		spawn_eruption(ground_point(global_position) + Vector3(cos(angle), 0, sin(angle)) * SLAM_RADIUS * 1.25)
+
+
+func _physics_process(delta):
+
+	phase_shift_left = max(phase_shift_left - delta, 0.0)
+	super(delta)
 
 
 func die():
 
-	telegraph.visible = false
 	GameState.boss_fight = false
 	GameState.boss_disengaged.emit()
 	super()
 	Sfx.play("boss_death")
+	# It comes apart in waves
+	for i in 5:
+		var at = global_position + Vector3(randf_range(-3, 3), randf_range(-2, 4), randf_range(-3, 3))
+		get_tree().create_timer(0.15 * i).timeout.connect(AshBurst.spawn.bind(get_parent(), at, 1.6))
 	GameState.defeat_boss()
 
 
@@ -327,4 +366,4 @@ func reset():
 	super()
 	queued_slam = false
 	followup = false
-	cancel_telegraph()
+	phase_shift_left = 0.0

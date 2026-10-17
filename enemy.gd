@@ -2,6 +2,11 @@ extends CharacterBody3D
 
 # A creature from CodexData, driven by the GDD state machine:
 #   IDLE -> DETECTED -> CHASE -> ATTACK -> (HURT / DIZZY) -> DEAD
+# Each kind fights its own way, every attack shown on the ground first
+# (telegraph.gd) and landing when the warning fills:
+#   Mossling    hops up and slams down where Veyl stood
+#   Ember Wolf  bites up close; at range it circles, then pounces down a lane
+#   Ashcrawler  bites up close; at range it spits ember bolts
 # Veyl's directional hits also push, spin, launch and daze it; that runs
 # on its own meters, separate from health (see IMPACT below).
 # Spawned by creature_spawner.gd; call setup() before adding to the tree.
@@ -16,6 +21,9 @@ const ItemPickup = preload("res://item_pickup.gd")
 const EmberPickup = preload("res://ember_pickup.gd")
 const SpritePose = preload("res://sprite_pose.gd")
 const InkSprite = preload("res://ink_sprite.gd")
+const Telegraph = preload("res://telegraph.gd")
+const AshBurst = preload("res://ash_burst.gd")
+const EmberBolt = preload("res://ember_bolt.gd")
 
 const PLAYER_RADIUS = 2.5
 # Dizzy meter: hits from alternating sides rattle a creature far more than
@@ -36,6 +44,18 @@ const LAUNCH_HANG_GRAVITY = 0.4
 # Same pixel density as Veyl's sprite (216 px = 8.1 units)
 const SPRITE_PIXEL_SIZE = 0.0375
 
+const KINDS = {"Mossling": "mossling", "Ember Wolf": "wolf", "Ashcrawler": "crawler"}
+# Windup per move: long enough to read and dodge, short enough to threaten
+const WINDUPS = {"bite": 0.45, "hop": 0.55, "pounce": 0.6, "spit": 0.6}
+const HOP_VELOCITY = 10.0
+const HOP_RADIUS = 3.4
+const POUNCE_SPEED = 26.0
+const POUNCE_TIME = 0.3
+const POUNCE_MIN = 6.0
+const POUNCE_MAX = 13.0
+const SPIT_MIN = 7.0
+const SPIT_MAX = 17.0
+
 # Behaviour tuning (boss.gd overrides some of these)
 var detect_range: float = 18.0
 var lose_range: float = 30.0
@@ -54,6 +74,7 @@ var dizzy_time: float = 1.6
 var launchable: bool = true
 
 var data: Dictionary
+var kind: String = ""
 var spawner_id: String = ""
 var player: Node3D
 var home: Vector3
@@ -103,6 +124,19 @@ var label: Label3D
 var alert_label: Label3D
 var dizzy_label: Label3D
 
+# The move under way, and its ground warning
+var move_kind: String = "bite"
+var tele: Node = null
+var leap_dir: Vector3 = Vector3.ZERO
+var leap_speed: float = 0.0
+var leap_target: Vector3 = Vector3.ZERO
+var hopping: bool = false
+var hop_time: float = 0.0
+var pounce_left: float = 0.0
+var pounce_hit: bool = false
+# Wolves circle one way or the other between pounces
+var circle_side: float = 1.0
+
 # Heavier than Earth gravity so jumps and launches don't float
 var gravity: float = ProjectSettings.get_setting(
 	"physics/3d/default_gravity"
@@ -113,6 +147,17 @@ func setup(creature: Dictionary, id: String = ""):
 
 	data = creature
 	spawner_id = id
+	kind = KINDS.get(creature["name"], "")
+	circle_side = 1.0 if randf() < 0.5 else -1.0
+	match kind:
+		"wolf":
+			attack_cooldown = 1.1
+			recover_time = 0.45
+		"crawler":
+			attack_cooldown = 1.3
+			recover_time = 0.6
+		"mossling":
+			attack_cooldown = 1.0
 
 	max_health = creature["health"]
 	health = max_health
@@ -241,6 +286,10 @@ func enter_state(new_state: State):
 
 	state = new_state
 	striking = false
+	if new_state != State.ATTACK:
+		hopping = false
+		pounce_left = 0.0
+		clear_tele(true)
 	alert_label.visible = new_state == State.DETECTED
 	dizzy_label.visible = new_state == State.DIZZY
 
@@ -325,6 +374,11 @@ func _physics_process(delta):
 			if state_timer <= 0.0 and not launched:
 				enter_state(State.CHASE)
 
+	if hopping:
+		hop_time += delta
+		if hop_time > 0.15 and is_on_floor():
+			land_hop()
+
 	velocity.x = move.x + knockback.x
 	velocity.z = move.z + knockback.z
 	knockback = knockback.move_toward(Vector3.ZERO, 40.0 * delta)
@@ -374,6 +428,14 @@ func should_give_up(dist: float) -> bool:
 
 
 func chase_movement(dir: Vector3) -> Vector3:
+
+	# Between pounces a wolf circles at a distance instead of walking in
+	if kind == "wolf" and cooldown_timer > 0.0:
+		var dist = flat(player.global_position - global_position).length()
+		var around = dir.cross(Vector3.UP) * circle_side
+		var keep = -dir if dist < POUNCE_MIN else (dir if dist > POUNCE_MAX - 2.0 else Vector3.ZERO)
+		return (around + keep * 0.8).normalized() * move_speed * 0.8
+
 	return dir * move_speed
 
 
@@ -386,24 +448,128 @@ func attack_reach() -> float:
 
 
 func wants_to_attack(dist: float) -> bool:
-	return dist <= attack_reach() and cooldown_timer <= 0.0
+
+	if cooldown_timer > 0.0:
+		return false
+	move_kind = "bite"
+	match kind:
+		"mossling":
+			if dist <= attack_reach() + 4.0:
+				move_kind = "hop"
+				return true
+		"wolf":
+			if dist >= POUNCE_MIN and dist <= POUNCE_MAX:
+				move_kind = "pounce"
+				return true
+		"crawler":
+			if dist >= SPIT_MIN and dist <= SPIT_MAX:
+				move_kind = "spit"
+				return true
+	return dist <= attack_reach()
 
 
+# Sets the windup and puts the warning on the ground
 func begin_attack():
-	face(flat(player.global_position - global_position))
+
+	var to_player = flat(player.global_position - global_position)
+	face(to_player)
+	if kind == "":
+		return
+
+	windup_time = WINDUPS[move_kind]
+	state_timer = windup_time
+	var dir = to_player.normalized() if to_player.length() > 0.01 else facing
+	var ground = global_position - Vector3(0, height / 2.0, 0)
+	clear_tele(true)
+	Sfx.play("enemy_windup", -6.0, randf_range(0.9, 1.1))
+
+	match move_kind:
+		"bite":
+			tele = Telegraph.lane(get_parent(), ground, dir, attack_reach() + 1.0, radius * 1.8, windup_time)
+		"hop":
+			# Locks on where Veyl is now: keep moving and it misses
+			leap_target = flat(player.global_position) + Vector3(0, ground.y, 0)
+			tele = Telegraph.circle(get_parent(), leap_target, HOP_RADIUS, windup_time)
+		"pounce":
+			leap_dir = dir
+			tele = Telegraph.lane(get_parent(), ground, dir, POUNCE_SPEED * POUNCE_TIME + radius, radius * 1.6, windup_time)
+		"spit":
+			leap_dir = dir
+			tele = Telegraph.lane(get_parent(), ground, dir, to_player.length() + 2.0, 1.2, windup_time)
 
 
 func attack_movement() -> Vector3:
+
+	if not striking:
+		return Vector3.ZERO
+	if hopping:
+		return leap_dir * leap_speed
+	if pounce_left > 0.0:
+		pounce_left -= get_physics_process_delta_time()
+		face(leap_dir)
+		var dist = flat(player.global_position - global_position).length()
+		if not pounce_hit and dist < radius + PLAYER_RADIUS and not player.dead:
+			pounce_hit = true
+			player.take_damage(CodexData.calc_damage(data["attack"] * 1.2, player.defense), global_position)
+		return leap_dir * POUNCE_SPEED
 	return Vector3.ZERO
 
 
 func perform_attack(dist: float):
-	Sfx.play("enemy_attack")
-	if dist <= attack_reach() + 1.0 and not player.dead:
-		player.take_damage(
-			CodexData.calc_damage(data["attack"], player.defense),
-			global_position
-		)
+
+	match move_kind:
+		"hop":
+			Sfx.play("enemy_attack", 0.0, 1.2)
+			var to_target = flat(leap_target - global_position)
+			var air_time = 2.0 * HOP_VELOCITY / gravity
+			leap_dir = to_target.normalized() if to_target.length() > 0.01 else Vector3.ZERO
+			leap_speed = min(to_target.length() / air_time, move_speed * 4.0)
+			velocity.y = HOP_VELOCITY
+			hopping = true
+			hop_time = 0.0
+			state_timer = air_time + recover_time
+		"pounce":
+			Sfx.play("enemy_attack", 0.0, 0.85)
+			pounce_left = POUNCE_TIME
+			pounce_hit = false
+			state_timer = POUNCE_TIME + recover_time
+			clear_tele(false)
+		"spit":
+			Sfx.play("spit")
+			var mouth = global_position + facing * radius + Vector3(0, height * 0.1, 0)
+			EmberBolt.spawn(get_parent(), mouth, leap_dir, CodexData.calc_damage(data["attack"] * 0.8, player.defense))
+			clear_tele(false)
+		_:
+			Sfx.play("enemy_attack")
+			clear_tele(false)
+			if dist <= attack_reach() + 1.0 and not player.dead:
+				player.take_damage(
+					CodexData.calc_damage(data["attack"], player.defense),
+					global_position
+				)
+
+
+# The hop comes down: anything under it is hit
+func land_hop():
+
+	hopping = false
+	sprite_scale = Vector2(1.35, 0.65)
+	Sfx.play("enemy_land", -2.0)
+	clear_tele(false)
+	AshBurst.spawn(get_parent(), global_position - Vector3(0, height / 2.0, 0), 0.4)
+	if flat(player.global_position - global_position).length() <= HOP_RADIUS + 1.0 and not player.dead:
+		player.take_damage(CodexData.calc_damage(data["attack"] * 1.1, player.defense), global_position)
+
+
+# cancelled: the attack never happened (fade); otherwise it just landed (flash)
+func clear_tele(cancelled: bool):
+
+	if tele and is_instance_valid(tele):
+		if cancelled:
+			tele.cancel()
+		else:
+			tele.burst()
+	tele = null
 
 
 # ============================================================
@@ -541,7 +707,9 @@ func die():
 	drop_loot()
 	died.emit(self)
 
-	# Collapse into ash
+	# Crumble into ash
+	clear_tele(true)
+	AshBurst.spawn(get_parent(), global_position, clamp(data["size"], 0.6, 3.0))
 	var tween = create_tween().set_parallel()
 	tween.tween_property(sprite, "scale", Vector3(1.3, 0.1, 1.0), 0.4)
 	tween.tween_property(sprite, "position:y", -height / 2.0, 0.4)
