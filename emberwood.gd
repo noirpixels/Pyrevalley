@@ -7,6 +7,8 @@ extends Node3D
 
 const InkPost = preload("res://ink_post.gd")
 const WorldDressing = preload("res://world_dressing.gd")
+# How close to Rowan's fire his theme takes over
+const CAMP_RADIUS = 26.0
 
 @export var light_path: NodePath = ^"../DirectionalLight3D"
 @export var environment_path: NodePath = ^"../WorldEnvironment"
@@ -43,7 +45,6 @@ func _ready():
 	add_child(WorldDressing.new())
 	update_signs()
 	Pad.mode_changed.connect(update_signs)
-	Sfx.play_music("forest")
 	Sfx.play_ambience("forest")
 	GameState.boss_engaged.connect(func(_boss): Sfx.play_music("boss"))
 	# Deferred: when the boss dies it disengages just before it counts as defeated
@@ -66,12 +67,25 @@ func update_signs():
 		fight_sign.text = "Left/right click to strike  ·  Scroll up to launch\nScroll down to slam  ·  Shift to dodge"
 
 
+# Outside the boss fight (which picks its own music), the place sets the
+# theme: Rowan's fire, the outer forest, or the Deep Forest
+func update_music(local: Vector3):
+
+	if GameState.boss_fight or GameState.boss_defeated:
+		return
+	var rowan = get_node_or_null("Rowan")
+	if rowan and Vector2(local.x - rowan.position.x, local.z - rowan.position.z).length() < CAMP_RADIUS:
+		Sfx.play_music("camp")
+	elif local.z < dark_start_z:
+		Sfx.play_music("deep")
+	else:
+		Sfx.play_music("forest")
+
+
 func _on_boss_disengaged():
 
 	if GameState.boss_defeated:
 		Sfx.stop_music()
-	else:
-		Sfx.play_music("forest")
 
 
 func build_bounds():
@@ -140,6 +154,8 @@ func _process(_delta):
 		return
 
 	embers.global_position = Vector3(player.global_position.x, 0.5, player.global_position.z)
+
+	update_music(to_local(player.global_position))
 
 	# Deeper into the forest = darker
 	var local_z = to_local(player.global_position).z

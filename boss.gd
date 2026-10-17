@@ -322,6 +322,7 @@ func phase_shift():
 	sprite_scale = Vector2(0.85, 1.25)
 
 	Sfx.play("boss_roar", 2.0, 0.85)
+	Sfx.play_music("boss2")
 	GameState.notify.emit("The Ashbound burns brighter!")
 	InkPost.flash(get_tree(), Color(1.0, 0.5, 0.2), 0.55)
 	Pad.rumble(0.8, 1.0, 0.6)

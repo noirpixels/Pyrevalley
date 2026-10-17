@@ -184,7 +184,7 @@ func _on_boss_defeated():
 
 	GameState.save_game(player)
 	await get_tree().create_timer(2.5).timeout
-	Sfx.stop_music()
 	Sfx.stop_ambience()
+	Sfx.play_music("ending")
 	ending.play()
 	update_paused()

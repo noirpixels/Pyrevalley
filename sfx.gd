@@ -11,6 +11,8 @@ const AMBIENCE_DB = -16.0
 const CROSSFADE = 1.2
 # Silence, as far as a volume slider is concerned
 const QUIET_DB = -60.0
+# Per-track trims so the themes sit at a similar loudness
+const TRACK_DB = {"camp": 5.0, "boss2": -1.5}
 
 var players: Array[AudioStreamPlayer] = []
 var next_player: int = 0
@@ -79,14 +81,17 @@ func play_music(track: String):
 	var old = music
 	music = music_out
 	music_out = old
-	var tween = create_tween().set_parallel()
-	if music_out.playing:
-		tween.tween_property(music_out, "volume_db", QUIET_DB, CROSSFADE)
-		tween.chain().tween_callback(music_out.stop)
+	var fading = music_out.playing
+	var target_db = MUSIC_DB + TRACK_DB.get(track, 0.0)
 	music.stream = stream
-	music.volume_db = QUIET_DB if music_out.playing else MUSIC_DB
+	music.volume_db = QUIET_DB if fading else target_db
 	music.play()
-	tween.tween_property(music, "volume_db", MUSIC_DB, CROSSFADE)
+	# Both at once: the old track fades out while the new one fades in
+	var tween = create_tween().set_parallel()
+	tween.tween_property(music, "volume_db", target_db, CROSSFADE).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_EXPO)
+	if fading:
+		tween.tween_property(music_out, "volume_db", QUIET_DB, CROSSFADE).set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_EXPO)
+		tween.chain().tween_callback(music_out.stop)
 
 
 func stop_music():

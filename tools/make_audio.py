@@ -466,6 +466,188 @@ def make_boss_music():
     write("music_boss", loop_crossfade(drive(out, 1.2), dur, 1.0), 0.8)
 
 
+# ------------------------------------------------------------
+# More music
+# ------------------------------------------------------------
+
+def place(out, track, at, g=1.0):
+    start = n_of(at)
+    for i, s in enumerate(track):
+        if start + i < len(out):
+            out[start + i] += s * g
+
+
+def pad(freqs, dur, cutoff=900, attack=1.5, release=1.5, detune=0.004):
+    """Slow detuned-saw chord, softened by a lowpass."""
+    voices = []
+    for f in freqs:
+        for d in (-detune, detune):
+            voices.append(osc(f * (1 + d), dur, "saw", phase=random.random()))
+    body = lowpass(mix(*voices), cutoff)
+    n = len(body)
+    a, r = n_of(attack), n_of(release)
+    return [x * min(1.0, i / max(1, a)) * min(1.0, (n - i) / max(1, r)) / len(voices) for i, x in enumerate(body)]
+
+
+def bowed(freq, dur, vibrato=0.006):
+    """An eerie bowed tone: slow swell, gentle vibrato, a little breath."""
+    tone = osc(lambda t: freq * (1 + vibrato * math.sin(TAU * 5.0 * t * dur)), dur, "tri")
+    breath = gain(bandpass(noise(dur), freq * 2, 4.0), 0.3)
+    return apply(mix(tone, breath), env_swell(dur, 0.5, 1.5))
+
+
+def notes_track(total, events, voice):
+    """events: (start seconds, freq, length seconds, gain); voice(freq, length) -> samples."""
+    out = silence(total)
+    for at, f, length, g in events:
+        place(out, voice(f, length), at, g)
+    return out
+
+
+# D minor / D major note names, for readability
+N = {"D2": 73.42, "F2": 87.31, "A2": 110.0, "C3": 130.81, "D3": 146.83, "E3": 164.81, "F3": 174.61,
+     "G3": 196.0, "A3": 220.0, "Bb3": 233.08, "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23,
+     "F#4": 369.99, "G4": 392.0, "A4": 440.0, "Bb4": 466.16, "C5": 523.25, "D5": 587.33, "E5": 659.25,
+     "F5": 698.46, "F#5": 739.99, "A5": 880.0, "G2": 98.0, "Bb2": 116.54, "A1": 55.0, "D1": 36.71}
+
+
+def make_menu_music():
+    # Title: a slow harp arpeggio over a soft pad, Dm - Bb - F - C
+    bpm = 70.0
+    beat = 60.0 / bpm
+    bars = 12
+    dur = bars * 4 * beat
+    total = dur + 5.0
+    chords = [("D3", "F3", "A3", "D4"), ("Bb2", "D3", "F3", "Bb3"), ("F2", "A2", "C3", "F3"), ("C3", "E3", "G3", "C4")]
+    pads = silence(total)
+    harp = []
+    for bar in range(bars):
+        ch = chords[bar % 4]
+        place(pads, pad([N[n] for n in ch[:3]], 4 * beat + 1.5, 700, 1.2, 1.2), bar * 4 * beat, 0.5)
+        # Up-and-down arpeggio in eighths, an octave up
+        seq = [ch[0], ch[1], ch[2], ch[3], ch[2], ch[1], ch[2], ch[3]]
+        for k, n in enumerate(seq):
+            harp.append((bar * 4 * beat + k * beat / 2, N[n] * 2, 2.5, 0.35 if k else 0.5))
+    # A melody enters halfway
+    melody = [(24, "A4"), (26, "G4"), (27, "F4"), (28, "D5"), (30, "C5"), (32, "Bb4"), (34, "A4"), (36, "F4"),
+              (40, "E4"), (42, "F4"), (43, "G4"), (44, "A4")]
+    harp += [(b * beat, N[n], 3.5, 0.6) for b, n in melody]
+    plucks = notes_track(total, harp, lambda f, l: pluck(f, l, 0.5, 0.997))
+    music = mix(pads, reverb(plucks, 0.45, 1.5, 0.0)[:len(pads)])
+    write("music_menu", loop_crossfade(music, dur, 4.0), 0.7)
+
+
+def make_camp_music():
+    # Rowan's Fire: warm and settled, F major, a lute tune and the fire crackling
+    bpm = 84.0
+    beat = 60.0 / bpm
+    bars = 16
+    dur = bars * 4 * beat
+    total = dur + 4.0
+    roots = ["F2", "C3", "D3", "Bb2"]
+    bass = []
+    strum = []
+    for bar in range(bars):
+        r = roots[bar % 4]
+        bass += [(bar * 4 * beat, N[r], 2.5, 0.5), (bar * 4 * beat + 2 * beat, N[r] * 1.5, 2.0, 0.3)]
+        third = {"F2": "A3", "C3": "E3", "D3": "F3", "Bb2": "D4"}[r]
+        fifth = {"F2": "C4", "C3": "G3", "D3": "A3", "Bb2": "F4"}[r]
+        for b in (1, 3):
+            strum += [(bar * 4 * beat + b * beat + k * 0.03, N[n], 1.2, 0.18) for k, n in enumerate([third, fifth])]
+    tune = [(0, "A4"), (1, "C5"), (2, "A4"), (3, "G4"), (4, "F4"), (6, "G4"), (7, "A4"),
+            (8, "F4"), (9, "A4"), (10, "D5"), (12, "C5"), (14, "A4"),
+            (16, "Bb4"), (17, "A4"), (18, "G4"), (20, "F4"), (22, "E4"), (23, "F4"), (24, "G4"), (28, "F4")]
+    lead = [(b * beat + 32 * beat * half, N[n], 2.0, 0.45) for half in (0, 1) for b, n in tune]
+    voice = lambda f, l: pluck(f, l, 0.7, 0.995)
+    plucked = mix(notes_track(total, bass, voice), notes_track(total, strum, voice), notes_track(total, lead, voice))
+    plucked = reverb(plucked, 0.25, 0.9, 0.0)[:len(plucked)]
+    # Fire: soft rumble with crackles
+    fire = gain(lowpass(noise(total), 500), 0.25)
+    pops = grains(total, int(total * 6), 4000, 0.008)
+    write("music_camp", loop_crossfade(mix(plucked, fire, gain(pops, 0.08)), dur, 3.0), 0.75)
+
+
+def make_deep_music():
+    # The Deep Forest: no tune, just dread. A low pulse, a heartbeat, bowed tones that never resolve
+    bpm = 56.0
+    beat = 60.0 / bpm
+    bars = 10
+    dur = bars * 4 * beat
+    total = dur + 5.0
+    drone = mix(gain(osc(N["D1"] * 2, total), 0.4), gain(osc(N["D1"] * 2 * 1.007, total), 0.3),
+                gain(lowpass(osc(N["A1"] * 1.414, total, "saw"), 200), 0.15))  # a tritone lurking under it
+    pulse = [0.6 + 0.4 * math.sin(TAU * i / RATE / (beat * 2)) for i in range(len(drone))]
+    drone = [d * p for d, p in zip(drone, pulse)]
+    beats = silence(total)
+    heart = mix(thump(60, 40, 0.25, 14), gain(thump(55, 38, 0.2, 16), 0.7), offsets=[0, 0.22])
+    for bar in range(bars):
+        place(beats, heart, bar * 4 * beat, 0.6)
+        place(beats, heart, bar * 4 * beat + 2 * beat, 0.45)
+    tones = notes_track(total, [(2 * beat, N["A4"], 6.0, 0.25), (9 * beat, N["Bb4"], 7.0, 0.22),
+                                (17 * beat, N["E5"], 6.0, 0.18), (25 * beat, N["F4"], 8.0, 0.22),
+                                (32 * beat, N["Bb4"] * 0.5, 7.0, 0.25)], bowed)
+    tones = reverb(tones, 0.5, 1.6, 0.0)[:len(tones)]
+    wind = gain(lowpass(noise(total), lambda t: 200 + 300 * math.sin(TAU * t * 2) ** 2), 0.15)
+    write("music_deep", loop_crossfade(mix(drone, beats, tones, wind), dur, 4.0), 0.65)
+
+
+def make_boss2_music():
+    # The Ashbound, Burning: phase two. Faster, heavier, a growling choir
+    bpm = 120.0
+    beat = 60.0 / bpm
+    bars = 8
+    dur = bars * 4 * beat
+    total = dur + 2.0
+    out = silence(total)
+    taiko = drive(mix(thump(110, 40, 0.5, 8), gain(apply(lowpass(noise(0.08), 900), env_exp(0.08, 0.001, 40)), 0.6)), 2.2)
+    snare = mix(gain(apply(bandpass(noise(0.15), 2000, 1.0), env_exp(0.15, 0.001, 22)), 0.7), gain(thump(240, 170, 0.08, 35), 0.4))
+    for bar in range(bars):
+        base = bar * 4 * beat
+        for b in (0, 0.75, 1.5, 2.0, 2.75, 3.5):
+            place(out, taiko, base + b * beat, 0.9 if b in (0, 2.0) else 0.6)
+        for b in (1, 3):
+            place(out, snare, base + b * beat, 0.55)
+        if bar % 2 == 1:
+            for k in range(4):
+                place(out, snare, base + 3 * beat + k * beat / 4, 0.3 + k * 0.1)
+    roots = [1.0, 1.0, 1.189, 1.335]  # D D F G
+    riff = [N["D2"], N["D2"], N["D3"], N["D2"], N["F2"], N["D2"], N["C3"], N["D2"]]
+    for bar in range(bars):
+        for k, f in enumerate(riff):
+            f = f * roots[bar % 4]
+            note = mix(lowpass(osc(f, beat / 2 * 0.9, "saw"), 800), gain(lowpass(osc(f * 2, beat / 2 * 0.9, "square"), 900), 0.4))
+            place(out, apply(drive(note, 1.8), env_exp(beat / 2 * 0.9, 0.003, 6)), bar * 4 * beat + k * beat / 2, 0.32)
+    # Choir: growling voices holding the chord, a bar each
+    for bar in range(bars):
+        r = roots[bar % 4]
+        for f in (N["D3"] * r, N["A3"] * r):
+            v = formant(f, 4 * beat, [(500, 1.0), (1000, 0.6), (2600, 0.2)], 0.012)
+            place(out, apply(v, env_swell(4 * beat, 0.3, 0.8)), bar * 4 * beat, 0.12)
+    out = reverb(out, 0.2, 1.1, 0.0)[:len(out)]
+    write("music_boss2", loop_crossfade(drive(out, 1.3), dur, 1.0), 0.82)
+
+
+def make_ending_music():
+    # The Forest Is Quiet: the forest theme's motif, resolved into D major
+    bpm = 66.0
+    beat = 60.0 / bpm
+    bars = 12
+    dur = bars * 4 * beat
+    total = dur + 5.0
+    chords = [("D3", "F#4", "A3"), ("G2", "D3", "G3"), ("D3", "F#4", "A3"), ("A2", "E3", "A3")]
+    pads = silence(total)
+    for bar in range(bars):
+        place(pads, pad([N[n] for n in chords[bar % 4]], 4 * beat + 2.0, 1100, 1.8, 1.8), bar * 4 * beat, 0.5)
+    motif = [(0, "D4"), (1, "F#4"), (2, "A4"), (3.5, "G4"), (6, "F#4"), (7, "E4"),
+             (16, "D4"), (17, "F#4"), (18, "D5"), (19.5, "A4"), (22, "G4"), (23, "F#4"),
+             (32, "A4"), (34, "G4"), (36, "D5"), (40, "F#5"), (44, "D5")]
+    lead = notes_track(total, [(b * beat, N[n], 4.0, 0.55) for b, n in motif], lambda f, l: pluck(f, l, 0.4, 0.998))
+    bells = notes_track(total, [(b * 4 * beat, N["A5"], 3.0, 0.08) for b in range(0, bars, 2)],
+                        lambda f, l: apply(osc(f, l), env_exp(l, 0.003, 1.5)))
+    music = mix(pads, reverb(mix(lead, bells), 0.5, 1.6, 0.0)[:len(pads)])
+    write("music_ending", loop_crossfade(music, dur, 4.0), 0.7)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT, exist_ok=True)
     which = sys.argv[1:] or ["sfx", "ambience", "music"]
@@ -476,3 +658,8 @@ if __name__ == "__main__":
     if "music" in which:
         make_forest_music()
         make_boss_music()
+        make_menu_music()
+        make_camp_music()
+        make_deep_music()
+        make_boss2_music()
+        make_ending_music()

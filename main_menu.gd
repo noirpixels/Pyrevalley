@@ -1,6 +1,7 @@
 extends Control
 
 func _ready() -> void:
+	Sfx.play_music("menu")
 	$Title.add_theme_font_override("font", Style.display_bold)
 	$Title.add_theme_font_size_override("font_size", 84)
 	# A pad starts on PLAY; pad.gd keeps focus in the menu after that
