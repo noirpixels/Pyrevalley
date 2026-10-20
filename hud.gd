@@ -366,6 +366,8 @@ func _process(delta):
 
 	var lines = []
 	for veyl in get_tree().get_nodes_in_group("remote_players"):
+		if veyl.peer_id == NetSync.BOT_ID:
+			continue
 		var bars = 8
 		var filled = int(ceil(clamp(veyl.health / veyl.max_health, 0.0, 1.0) * bars))
 		var bar = "fallen" if veyl.dead else "■".repeat(filled) + "□".repeat(bars - filled)

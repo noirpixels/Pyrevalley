@@ -4,6 +4,8 @@ extends CharacterBody3D
 # (group "player", camera, input) and everyone else's is a remote copy
 # that follows the state their machine sends (net_sync.gd). Damage to a
 # Veyl is always applied by its own player's machine.
+# A bot Veyl (duel_bot.gd, the Ember Shade) runs this same code on the
+# host, with duel_bot.gd steering it instead of the keyboard.
 
 signal health_changed(current, maximum)
 signal died
@@ -59,6 +61,8 @@ const AIM_ASSIST_DEGREES = 70.0
 const PVP_DAMAGE = 0.5
 # A remote Veyl this far from where its player has it jumps there
 const NET_SNAP_DIST = 10.0
+# The Ember Shade is drawn darker than a player's Veyl
+const SHADE_TINT = Color(0.5, 0.42, 0.45)
 
 @export_group("2.5D Character Textures")
 @export var texture_front: Texture2D
@@ -135,6 +139,12 @@ var hit_stop_scale: float = 1.0
 # Another player's Veyl, shown here
 var remote: bool = false
 var peer_id: int = 1
+# Run by duel_bot.gd: walks where bot_move points
+var bot: bool = false
+var bot_move: Vector3 = Vector3.ZERO
+var base_tint: Color = Color.WHITE
+# When this Veyl last swung (the bot reads it to dodge)
+var last_swing_msec: int = -100000
 # A menu or dialogue is open (multiplayer keeps running underneath)
 var input_blocked: bool = false
 var net_pos: Vector3
@@ -178,12 +188,22 @@ var presets = {
 
 func _ready():
 
-	add_to_group("players")
-	add_to_group("remote_players" if remote else "player")
+	# A bot isn't a player: creatures ignore it, and other Veyls see it the
+	# way they see each other ("remote_players")
+	if bot:
+		add_to_group("duel_bots")
+		add_to_group("remote_players")
+	elif peer_id == NetSync.BOT_ID:
+		add_to_group("remote_players")
+	else:
+		add_to_group("players")
+		add_to_group("remote_players" if remote else "player")
 	start_position = global_position
 	health = max_health
+	if peer_id == NetSync.BOT_ID:
+		base_tint = SHADE_TINT
 
-	if not remote:
+	if not remote and not bot:
 		# Restore progress from the save (position, HP)
 		GameState.ensure_loaded()
 
@@ -209,6 +229,7 @@ func _ready():
 
 		if texture_front:
 			sprite.texture = texture_front
+		sprite.modulate = base_tint
 
 		animator = VeylAnimator.new(self, sprite)
 		add_child(animator)
@@ -219,10 +240,12 @@ func _ready():
 		spring_arm.add_excluded_object(get_rid())
 		spring_arm.collision_mask = 0
 
-	if remote:
-		# Walk-through, so players never shove each other around
+	if remote or bot:
+		# Walk-through, so players never shove each other around (a bot
+		# still walks into the ring's walls)
 		collision_layer = 0
-		collision_mask = 0
+		if remote:
+			collision_mask = 0
 		net_pos = global_position
 		if main_cam:
 			main_cam.current = false
@@ -242,7 +265,7 @@ func _ready():
 # Unhandled so clicks on HUD buttons don't also swing the sword
 func _unhandled_input(event):
 
-	if dead or remote or input_blocked:
+	if dead or remote or bot or input_blocked:
 		return
 
 	# --------------------------------------------------------
@@ -333,8 +356,9 @@ func _physics_process(delta):
 		velocity.y -= gravity * delta
 
 
-	update_camera(delta)
-	RenderingServer.global_shader_parameter_set("player_position", global_position)
+	if not bot:
+		update_camera(delta)
+		RenderingServer.global_shader_parameter_set("player_position", global_position)
 
 	if dead:
 
@@ -349,9 +373,10 @@ func _physics_process(delta):
 	# JUMP
 	# --------------------------------------------------------
 
-	update_actions()
+	if not bot:
+		update_actions()
 
-	if Input.is_action_pressed("jump") and not input_blocked:
+	if Input.is_action_pressed("jump") and not input_blocked and not bot:
 
 		if is_on_floor():
 
@@ -371,6 +396,8 @@ func _physics_process(delta):
 		0,
 		direction_2d.y
 	)
+	if bot:
+		direction = bot_move
 
 
 	if dash_timer > 0.0:
@@ -403,7 +430,12 @@ func _physics_process(delta):
 		velocity.z = move_toward(velocity.z, 0, speed)
 
 
-	if Pad.using_pad:
+	if bot:
+
+		# duel_bot.gd aims
+		pass
+
+	elif Pad.using_pad:
 
 		# Right stick aims; without it Veyl faces where vae walks
 		var stick = Input.get_vector("aim_left", "aim_right", "aim_up", "aim_down")
@@ -423,7 +455,8 @@ func _physics_process(delta):
 			aim_dir = to_target.normalized()
 
 	update_sprite_facing()
-	update_interact_target()
+	if not bot:
+		update_interact_target()
 
 	move_and_slide()
 	update_blob_shadow()
@@ -647,9 +680,10 @@ func perform_move(move: Dictionary):
 	var weapon = GameState.weapon()
 	var attack_range: float = weapon["range"] * move["range"]
 	var arc: float = move["arc"]
-	if Pad.using_pad:
+	if Pad.using_pad and not bot:
 		aim_assist(attack_range)
 	attack_timer = weapon["cooldown"] * move["cooldown"]
+	last_swing_msec = Time.get_ticks_msec()
 	Sfx.play("attack", 0.0, SWING_PITCH.get(move["name"], 1.0))
 
 	# The blade connects a moment later, on the swing's strike frame
@@ -661,7 +695,7 @@ func perform_move(move: Dictionary):
 
 	if animator:
 		animator.swing(move["name"], aim_dir)
-	NetSync.share_player_fx("swing", [move["name"], aim_dir])
+	NetSync.share_player_fx("swing", [move["name"], aim_dir], net_id())
 
 
 func update_pending_swings(delta: float):
@@ -693,7 +727,8 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 	var half_arc = deg_to_rad(arc) / 2.0
 	var hits = []
 
-	for enemy in get_tree().get_nodes_in_group("enemies"):
+	# The Ember Shade only duels
+	for enemy in [] if bot else get_tree().get_nodes_in_group("enemies"):
 
 		var offset = enemy.global_position - global_position
 		offset.y = 0
@@ -706,11 +741,12 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 
 		hits.append(enemy)
 
-	# Other players, only while both are inside the Proving Ring
+	# Other players (and the Ember Shade), only while both are inside the
+	# Proving Ring. The Shade goes after the real players.
 	var duels = []
 	var ring = get_tree().get_first_node_in_group("pvp_ring")
 	if ring and ring.contains(global_position):
-		for other in get_tree().get_nodes_in_group("remote_players"):
+		for other in get_tree().get_nodes_in_group("players" if bot else "remote_players"):
 			var offset = other.global_position - global_position
 			offset.y = 0
 			if other.dead or not ring.contains(other.global_position):
@@ -837,14 +873,15 @@ func duel_strike(other: Node3D, move: Dictionary, combo_mult: float):
 	var away = other.global_position - global_position
 	away.y = 0
 	away = away.normalized() if away.length() > 0.01 else aim_dir
-	NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6)
+	NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6, net_id())
 
 	var spark_at = other.global_position + Vector3(0, 3.0, 0)
 	HitSpark.spawn(get_parent(), spark_at, away + Vector3.UP * 0.6, Color(1.0, 0.5, 0.15), 14)
 	Sfx.play("hit_heavy", -4.0)
 	hit_stop(0.06)
 	shake = max(shake, 0.2)
-	Pad.rumble(0.4, 0.2, 0.08)
+	if not bot:
+		Pad.rumble(0.4, 0.2, 0.08)
 
 
 # A stick can't point as precisely as a mouse, so swing at the closest
@@ -874,6 +911,9 @@ func aim_assist(attack_range: float):
 # extend the freeze rather than stacking; the slowest requested speed wins.
 # A kill uses a longer, gentler slow-motion (scale ~0.25).
 func hit_stop(duration: float, scale: float = HIT_STOP_SCALE):
+
+	if bot:
+		return
 
 	# A shared world can't slow down for one player, so in a session only
 	# this Veyl's pose holds for the moment instead
@@ -927,7 +967,7 @@ func try_dash():
 	dash_cooldown_timer = dash_cooldown
 	Sfx.play("dash", -4.0)
 	invuln_timer = dash_time + 0.05
-	NetSync.share_player_fx("dash")
+	NetSync.share_player_fx("dash", [], net_id())
 
 
 func take_damage(amount: int, from: Vector3):
@@ -942,7 +982,8 @@ func take_damage(amount: int, from: Vector3):
 
 	health = max(health - amount, 0.0)
 	invuln_timer = 0.3
-	Pad.rumble(0.4, 0.7, 0.2)
+	if not bot:
+		Pad.rumble(0.4, 0.7, 0.2)
 	if combo.count > 0:
 		combo.drop()
 		emit_combo()
@@ -966,7 +1007,7 @@ func take_damage(amount: int, from: Vector3):
 		animator.hurt(from)
 
 	flinch()
-	NetSync.share_player_fx("hurt", [amount, from])
+	NetSync.share_player_fx("hurt", [amount, from], net_id())
 
 	if health <= 0.0:
 		die()
@@ -976,7 +1017,7 @@ func flinch():
 
 	if sprite:
 		sprite.modulate = Color(1.0, 0.3, 0.3)
-		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.25)
+		create_tween().tween_property(sprite, "modulate", base_tint, 0.25)
 
 
 # A hit sent over the network (net_sync.gd): a creature on the host's
@@ -1011,12 +1052,12 @@ func die():
 
 	dead = true
 	fade_out()
-	NetSync.share_player_fx("die")
+	NetSync.share_player_fx("die", [], net_id())
 
 	var ring = get_tree().get_first_node_in_group("pvp_ring")
 	died_in_ring = ring != null and ring.contains(global_position)
 	if died_in_ring and last_attacker != 0:
-		NetSync.announce("%s bested %s in the Proving Ring." % [Net.name_of(last_attacker), Net.player_name])
+		NetSync.announce("%s bested %s in the Proving Ring." % [Net.name_of(last_attacker), Net.name_of(net_id())])
 	last_attacker = 0
 
 	died.emit()
@@ -1045,11 +1086,11 @@ func respawn():
 	invuln_timer = 1.0
 
 	if sprite:
-		sprite.modulate = Color.WHITE
+		sprite.modulate = base_tint
 
 	health_changed.emit(health, max_health)
 	respawned.emit()
-	NetSync.share_player_fx("respawn")
+	NetSync.share_player_fx("respawn", [], net_id())
 
 
 # ============================================================
@@ -1092,6 +1133,11 @@ func _on_boss_disengaged():
 # ============================================================
 # NETWORK (this machine's Veyl -> everyone else's copy of it)
 # ============================================================
+
+# Who this Veyl is in the session
+func net_id() -> int:
+	return NetSync.BOT_ID if bot else Net.my_id()
+
 
 func grounded() -> bool:
 	return remote_on_floor if remote else is_on_floor()
@@ -1161,6 +1207,7 @@ func fx_swing(kind: String, aim: Vector3):
 
 	if NetSync.near_me(global_position):
 		Sfx.play("attack", -4.0, SWING_PITCH.get(kind, 1.0))
+	last_swing_msec = Time.get_ticks_msec()
 	if animator:
 		animator.swing(kind, aim)
 	var move = CombatMoves.get_move(kind, kind == "aerial")
@@ -1188,4 +1235,4 @@ func fx_die():
 func fx_respawn():
 
 	if sprite:
-		sprite.modulate = Color.WHITE
+		sprite.modulate = base_tint

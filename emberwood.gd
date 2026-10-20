@@ -44,8 +44,7 @@ func _ready():
 	build_embers()
 	add_child(InkPost.new())
 	add_child(WorldDressing.new())
-	if Net.online:
-		add_child(PvpRing.new())
+	add_child(PvpRing.new())
 	# Spawners and placed pickups are ready now; start (or join) the session
 	NetSync.enter_world.call_deferred(get_parent())
 	update_signs()

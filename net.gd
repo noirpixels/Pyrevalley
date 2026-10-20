@@ -66,6 +66,10 @@ func player_count() -> int:
 
 
 func name_of(id: int) -> String:
+	if id == NetSync.BOT_ID:
+		return NetSync.BOT_NAME
+	if id == my_id() and not online:
+		return player_name
 	return roster.get(id, {}).get("name", "Veyl")
 
 

@@ -26,6 +26,10 @@ const RELEVANT_RANGE = 70.0
 const HEARING_RANGE = 40.0
 # Positions use their own channel so they never queue behind reliable events
 const STREAM = 1
+# The Ember Shade (duel_bot.gd) is run by the host and shown to guests like
+# another player, under this id
+const BOT_ID = -1
+const BOT_NAME = "Ember Shade"
 # Sanity limits on what a guest may claim
 const MAX_HIT = 999
 const MAX_HIT_REACH = 30.0
@@ -97,6 +101,10 @@ func all_players() -> Array:
 	return get_tree().get_nodes_in_group("players")
 
 
+func duel_bot() -> Node3D:
+	return get_tree().get_first_node_in_group("duel_bots")
+
+
 func spawn_remote(id: int, pos: Vector3):
 
 	if world == null or remotes.has(id) or id == Net.my_id():
@@ -106,7 +114,7 @@ func spawn_remote(id: int, pos: Vector3):
 	veyl.find_child("MainGameCamera").current = false
 	veyl.remote = true
 	veyl.peer_id = id
-	veyl.name = "Peer%d" % id
+	veyl.name = "EmberShade" if id == BOT_ID else "Peer%d" % id
 	world.add_child(veyl)
 	veyl.global_position = pos
 	remotes[id] = veyl
@@ -141,6 +149,9 @@ func client_ready():
 	var players = {Net.my_id(): start}
 	for other in remotes:
 		players[other] = remotes[other].global_position
+	var shade = duel_bot()
+	if shade:
+		players[BOT_ID] = shade.global_position
 
 	var creatures = []
 	for i in spawners.size():
@@ -225,6 +236,12 @@ func _physics_process(delta):
 		else:
 			my_state.rpc_id(1, state)
 
+	var shade = duel_bot()
+	if shade and Net.is_host():
+		var state = shade.net_state()
+		for peer in ready_peers:
+			player_state.rpc_id(peer, BOT_ID, state)
+
 	if Net.is_host():
 		send_creatures()
 
@@ -287,13 +304,14 @@ func creature_states(packed: PackedFloat32Array):
 
 # ---- One-off moments on a Veyl (swings, flinches, falling, waking) ----
 
-func share_player_fx(fx: String, args: Array = []):
+# id: whose Veyl it is (this player's, or the host's Ember Shade)
+func share_player_fx(fx: String, args: Array, id: int):
 
 	if not active():
 		return
 	if Net.is_host():
 		for peer in ready_peers:
-			remote_player_fx.rpc_id(peer, Net.my_id(), fx, args)
+			remote_player_fx.rpc_id(peer, id, fx, args)
 	else:
 		relay_player_fx.rpc_id(1, fx, args)
 
@@ -328,6 +346,10 @@ func hurt_player(id: int, amount: int, from: Vector3, push: Vector3 = Vector3.ZE
 		var me = local_player()
 		if me:
 			me.take_hit(amount, from, push, attacker)
+	elif id == BOT_ID:
+		var shade = duel_bot()
+		if shade:
+			shade.take_hit(amount, from, push, attacker)
 	else:
 		hurt_me.rpc_id(id, amount, from, push, attacker)
 
@@ -340,11 +362,12 @@ func hurt_me(amount: int, from: Vector3, push: Vector3, attacker: int):
 		me.take_hit(amount, from, push, attacker)
 
 
-# A duel hit landed on this player's screen; the host passes it on
-func pvp_hit(target: int, amount: int, from: Vector3, push: Vector3):
+# A duel hit landed on this machine (attacker: this player, or the host's
+# Ember Shade); the host passes it on
+func pvp_hit(target: int, amount: int, from: Vector3, push: Vector3, attacker: int):
 
 	if Net.is_host():
-		hurt_player(target, amount, from, push, Net.my_id())
+		hurt_player(target, amount, from, push, attacker)
 	else:
 		request_pvp_hit.rpc_id(1, target, amount, from, push)
 
@@ -357,7 +380,7 @@ func request_pvp_hit(target: int, amount: int, from: Vector3, push: Vector3):
 	var id = multiplayer.get_remote_sender_id()
 	var ring = get_tree().get_first_node_in_group("pvp_ring")
 	var attacker = remotes.get(id)
-	var victim = local_player() if target == Net.my_id() else remotes.get(target)
+	var victim = local_player() if target == Net.my_id() else (duel_bot() if target == BOT_ID else remotes.get(target))
 	if ring == null or attacker == null or victim == null:
 		return
 	# Both have to be in the ring on the host's copy too (with some slack)
@@ -546,6 +569,7 @@ func notify_all(text: String):
 func announce(text: String):
 
 	if not Net.online:
+		GameState.notify.emit(text)
 		return
 	if Net.is_host():
 		notify_all(text)

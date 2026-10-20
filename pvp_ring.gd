@@ -4,10 +4,12 @@ extends Node3D
 # Area where players can fight each other. PvP only works while both
 # players stand inside it (player_3d.gd resolve_swing); everywhere else in
 # Emberwood, swords pass through friends. A portal by the start leads in,
-# and one inside leads back. Only built in a multiplayer session.
+# and one inside leads back. The Ember Shade (duel_bot.gd) waits inside
+# to fight anyone who comes in, so the ring is there in solo games too.
 # Lives under Emberwood, so positions are in its local space.
 
 const EmberWall = preload("res://ember_wall.gd")
+const DuelBot = preload("res://duel_bot.gd")
 
 const CENTRE = Vector3(85, 0, 95)
 const RADIUS = 18.0
@@ -86,9 +88,13 @@ func _ready():
 	inner.position = Vector3(0, 0, RADIUS - 5.0)
 	add_child(inner)
 
-	var outer = Portal.new("The Proving Ring\nduels between players", "Enter the Proving Ring", spawn_point)
+	var outer = Portal.new("The Proving Ring\nduels with the Ember Shade and other players", "Enter the Proving Ring", spawn_point)
 	outer.position = OUTER_PORTAL - CENTRE
 	add_child(outer)
+
+	# The host runs the Shade; guests see it through net_sync.gd
+	if Net.is_host():
+		add_child(DuelBot.new())
 
 
 # Is a world position inside the ring? slack widens it (the host's check
