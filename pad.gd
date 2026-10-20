@@ -14,6 +14,7 @@ extends Node
 #   Right stick aim             X (top)  launch      Y (left)  slam
 #   B (bottom)  jump            A (right) interact   R  dodge
 #   +  pause    -  inventory    L  codex             D-pad up/down  zoom
+#   D-pad left/right  switch between weapon, pickaxe and axe (keys 1 2 3)
 
 signal mode_changed
 
@@ -39,6 +40,12 @@ const ACTIONS = {
 	"codex": [KEY_C, {"button": JOY_BUTTON_LEFT_SHOULDER}],
 	"zoom_in": [KEY_EQUAL, KEY_KP_ADD, {"button": JOY_BUTTON_DPAD_UP}],
 	"zoom_out": [KEY_MINUS, KEY_KP_SUBTRACT, {"button": JOY_BUTTON_DPAD_DOWN}],
+	# Tool bar: weapon, pickaxe, axe
+	"tool_1": [KEY_1],
+	"tool_2": [KEY_2],
+	"tool_3": [KEY_3],
+	"tool_prev": [{"button": JOY_BUTTON_DPAD_LEFT}],
+	"tool_next": [{"button": JOY_BUTTON_DPAD_RIGHT}],
 }
 
 # Local Duel (duel.gd): two players on one keyboard, combat keys only.

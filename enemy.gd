@@ -61,6 +61,9 @@ const SPIT_MAX = 17.0
 const NET_FIELDS = 13
 # A puppet this far from where the host has it jumps there instead of gliding
 const NET_SNAP_DIST = 8.0
+# Emberbrand fire: damage every BURN_TICK seconds while it lasts
+const BURN_DAMAGE = 3
+const BURN_TICK = 0.5
 
 # Behaviour tuning (boss.gd overrides some of these)
 var detect_range: float = 18.0
@@ -91,6 +94,9 @@ var net_pos: Vector3
 var net_vel: Vector3 = Vector3.ZERO
 var net_age: float = 0.0
 var has_net_state: bool = false
+var burn_left: float = 0.0
+var burn_tick: float = 0.0
+var flames: CPUParticles3D = null
 
 var state: State = State.IDLE
 var state_timer: float = 0.0
@@ -347,6 +353,9 @@ func _physics_process(delta):
 
 	state_timer -= delta
 	update_impact(delta)
+	update_burn(delta)
+	if state == State.DEAD:
+		return
 	cooldown_timer = max(cooldown_timer - delta, 0.0)
 	flash_timer = max(flash_timer - delta, 0.0)
 
@@ -657,11 +666,69 @@ func take_damage(amount: int, from: Vector3):
 		enter_state(State.HURT)
 
 
-# A Veyl's blade connected (net_sync.gd sends guests' hits here)
-func receive_hit(amount: int, from: Vector3, push: Vector3, spin: float, dizzy_gain: float, launch: float, side: int):
+# A Veyl's blade connected (net_sync.gd sends guests' hits here). burn:
+# seconds of fire from an Emberbrand weapon.
+func receive_hit(amount: int, from: Vector3, push: Vector3, spin: float, dizzy_gain: float, launch: float, side: int, burn: float = 0.0):
 
 	take_damage(amount, from)
 	apply_impact(push, spin, dizzy_gain, launch, side)
+	if burn > 0.0 and state != State.DEAD:
+		if burn_left <= 0.0:
+			fx("burning", [true])
+		burn_left = max(burn_left, burn)
+
+
+# Fire eats at it without staggering it
+func update_burn(delta: float):
+
+	if burn_left <= 0.0:
+		return
+	burn_left -= delta
+	burn_tick -= delta
+	if burn_tick <= 0.0:
+		burn_tick = BURN_TICK
+		health -= BURN_DAMAGE
+		health_changed.emit(max(health, 0.0), max_health)
+		fx("hurt", [BURN_DAMAGE, global_position])
+		if health <= 0.0:
+			die()
+			return
+	if burn_left <= 0.0:
+		fx("burning", [false])
+
+
+func fx_burning(on: bool):
+
+	if on and flames == null:
+		flames = CPUParticles3D.new()
+		flames.amount = 24
+		flames.lifetime = 0.6
+		flames.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+		flames.emission_sphere_radius = radius * 0.8
+		flames.direction = Vector3.UP
+		flames.spread = 25.0
+		flames.initial_velocity_min = 2.0
+		flames.initial_velocity_max = 4.0
+		flames.scale_amount_min = 0.6
+		flames.scale_amount_max = 1.4
+		var ramp = Gradient.new()
+		ramp.set_color(0, Color(1.0, 0.8, 0.4, 1.0))
+		ramp.set_color(1, Color(1.0, 0.25, 0.05, 0.0))
+		flames.color_ramp = ramp
+		var quad = QuadMesh.new()
+		quad.size = Vector2(0.4, 0.4)
+		var mat = StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.vertex_color_use_as_albedo = true
+		mat.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+		mat.render_priority = 5
+		mat.albedo_texture = preload("res://fx.gd").soft_dot()
+		quad.material = mat
+		flames.mesh = quad
+		add_child(flames)
+	if flames:
+		flames.emitting = on
 
 
 func dead_already() -> bool:
@@ -760,6 +827,8 @@ func drop_loot():
 
 	if data.get("drop", "") != "":
 		NetSync.drop("item", data["drop"], ground + Vector3(1.0, 0, 0))
+	if data.has("drop2") and randf() < data["drop2_chance"]:
+		NetSync.drop("item", data["drop2"], ground + Vector3(0, 0, 1.0))
 
 	if randf() < ember_drop_chance:
 		NetSync.drop("ember", "", ground + Vector3(-1.0, 0, 0))

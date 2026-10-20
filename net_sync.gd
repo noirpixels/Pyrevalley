@@ -78,6 +78,12 @@ func enter_world(root: Node3D):
 	spawners.sort_custom(func(a, b): return a.spawn_id() < b.spawn_id())
 	for node in get_tree().get_nodes_in_group("pickups"):
 		register_pickup(node)
+	# The world as it was saved: dug blocks, felled trees, built stations
+	if Net.is_host():
+		for key in GameState.saved_objects:
+			var node = world.get_node_or_null(NodePath(key))
+			if node and node.has_method("apply_snapshot"):
+				node.apply_snapshot(GameState.saved_objects[key])
 	if Net.online and not Net.is_host():
 		client_ready.rpc_id(1)
 
@@ -163,12 +169,13 @@ func client_ready():
 	for pid in pickups:
 		var node = pickups[pid]
 		if node.pickup_id == "" and not taken.has(pid):
-			loot.append([pid, node.kind(), node.get("item_name") if node.kind() == "item" else "", node.global_position])
+			loot.append([pid, node.kind(), node.get("item_name") if node.kind() != "ember" else "", node.global_position])
 
 	welcome.rpc_id(id, {
 		"players": players,
 		"creatures": creatures,
 		"loot": loot,
+		"objects": object_snapshots(),
 		"world": GameState.world_data(),
 		"checkpoint": GameState.checkpoint_position,
 	})
@@ -196,6 +203,11 @@ func welcome(data: Dictionary):
 
 	for entry in data["loot"]:
 		make_pickup(entry[0], entry[1], entry[2], entry[3])
+
+	for key in data["objects"]:
+		var node = world.get_node_or_null(NodePath(key))
+		if node:
+			node.apply_snapshot(data["objects"][key])
 
 	GameState.apply_world(data["world"])
 	for pid in GameState.collected_pickups:
@@ -441,16 +453,16 @@ func spawn_creature(i: int, max_health: float):
 # This player's swing connected with a creature. The host applies it
 # straight away; a guest's hit goes to the host, which trusts what the
 # guest saw (within limits), so hits land the way they looked.
-func hit_creature(creature: Node3D, amount: int, from: Vector3, push: Vector3, spin: float, dizzy: float, launch: float, side: int):
+func hit_creature(creature: Node3D, amount: int, from: Vector3, push: Vector3, spin: float, dizzy: float, launch: float, side: int, burn: float):
 
 	if Net.is_host():
-		creature.receive_hit(amount, from, push, spin, dizzy, launch, side)
+		creature.receive_hit(amount, from, push, spin, dizzy, launch, side, burn)
 	else:
-		request_hit.rpc_id(1, spawners.find(creature.get_parent()), amount, from, push, spin, dizzy, launch, side)
+		request_hit.rpc_id(1, spawners.find(creature.get_parent()), amount, from, push, spin, dizzy, launch, side, burn)
 
 
 @rpc("any_peer", "call_remote", "reliable")
-func request_hit(i: int, amount: int, from: Vector3, push: Vector3, spin: float, dizzy: float, launch: float, side: int):
+func request_hit(i: int, amount: int, from: Vector3, push: Vector3, spin: float, dizzy: float, launch: float, side: int, burn: float):
 
 	if not Net.is_host():
 		return
@@ -459,7 +471,7 @@ func request_hit(i: int, amount: int, from: Vector3, push: Vector3, spin: float,
 		return
 	if from.distance_to(creature.global_position) > MAX_HIT_REACH:
 		return
-	creature.receive_hit(clampi(amount, 0, MAX_HIT), from, push.limit_length(60.0), spin, dizzy, launch, side)
+	creature.receive_hit(clampi(amount, 0, MAX_HIT), from, push.limit_length(60.0), spin, dizzy, launch, side, clampf(burn, 0.0, 5.0))
 
 
 # ============================================================
@@ -481,14 +493,15 @@ func unregister_pickup(node: Node3D):
 
 
 # Host (or solo): a creature dropped something
-func drop(kind: String, item_name: String, pos: Vector3):
+func drop(kind: String, item_name: String, pos: Vector3) -> Node3D:
 
 	drop_count += 1
 	var id = "drop%d" % drop_count
-	make_pickup(id, kind, item_name, pos)
+	var node = make_pickup(id, kind, item_name, pos)
 	if active():
 		for peer in ready_peers:
 			loot_dropped.rpc_id(peer, id, kind, item_name, pos)
+	return node
 
 
 @rpc("authority", "call_remote", "reliable")
@@ -496,19 +509,23 @@ func loot_dropped(id: String, kind: String, item_name: String, pos: Vector3):
 	make_pickup(id, kind, item_name, pos)
 
 
-func make_pickup(id: String, kind: String, item_name: String, pos: Vector3):
+func make_pickup(id: String, kind: String, item_name: String, pos: Vector3) -> Node3D:
 
 	if world == null:
-		return
+		return null
 	var node
 	if kind == "ember":
 		node = load(EMBER_PICKUP).new()
 	else:
+		# "item": creature drops; "loose": mined or chopped, sinks away in
+		# time; "forage": lying on the forest floor
 		node = load(ITEM_PICKUP).new()
 		node.item_name = item_name
+		node.pickup_kind = kind
 	node.drop_id = id
 	world.add_child(node)
 	node.global_position = pos
+	return node
 
 
 # This player reached a pickup
@@ -555,6 +572,84 @@ func pickup_taken(id: String, who: int):
 		node.collect()
 	else:
 		node.vanish()
+
+
+# ============================================================
+# WORLD OBJECTS (mining sites, trees, stations, the blood moon)
+# ============================================================
+# A world object is in group "net_objects" and has:
+#   host_request(args, sender)  the host acts on a player's strike, chop or build
+#   fx_<name>(...)              what everyone sees happen (object_fx)
+#   net_snapshot() / apply_snapshot(data)  its state, for late joiners and
+#                                the host's save (null when untouched)
+
+func object_key(node: Node) -> String:
+	return str(world.get_path_to(node)) if world else ""
+
+
+# Any player: ask the host to act (the host just does it)
+func ask_host(node: Node, args: Array):
+
+	if Net.is_host():
+		node.host_request(args, Net.my_id())
+	elif active():
+		request_object.rpc_id(1, object_key(node), args)
+
+
+@rpc("any_peer", "call_remote", "reliable")
+func request_object(key: String, args: Array):
+
+	if not (Net.is_host() and world):
+		return
+	var node = world.get_node_or_null(NodePath(key))
+	if node and node.is_in_group("net_objects"):
+		node.host_request(args, multiplayer.get_remote_sender_id())
+
+
+# Host: a world object changed; show it here and on every guest
+func object_fx(node: Node, fx: String, args: Array = []):
+
+	node.callv("fx_" + fx, args)
+	if active() and Net.is_host():
+		var key = object_key(node)
+		for peer in ready_peers:
+			play_object_fx.rpc_id(peer, key, fx, args)
+
+
+# Host: tell just one player (a refused build, say)
+func tell(peer: int, node: Node, fx: String, args: Array = []):
+
+	if peer == Net.my_id():
+		node.callv("fx_" + fx, args)
+	elif active():
+		play_object_fx.rpc_id(peer, object_key(node), fx, args)
+
+
+@rpc("authority", "call_remote", "reliable")
+func play_object_fx(key: String, fx: String, args: Array):
+
+	if world == null:
+		return
+	var node = world.get_node_or_null(NodePath(key))
+	if node and node.has_method("fx_" + fx):
+		node.callv("fx_" + fx, args)
+
+
+func object_snapshots() -> Dictionary:
+
+	var snaps = {}
+	if world == null:
+		return snaps
+	for node in get_tree().get_nodes_in_group("net_objects"):
+		var snap = node.net_snapshot()
+		if snap != null:
+			snaps[object_key(node)] = snap
+	return snaps
+
+
+# Where a player's Veyl is, as the host sees it (to check their reach)
+func veyl_of(peer: int) -> Node3D:
+	return local_player() if peer == Net.my_id() else remotes.get(peer)
 
 
 # ============================================================

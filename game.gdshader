@@ -17,6 +17,10 @@ uniform float bump_strength = 0.6;
 uniform float mesh_offset_z = -20.0;
 uniform float half_width = 40.0;
 uniform float path_width = 3.5;
+// Mining sites (mining_sites.gd) cut holes here, where their blocks take
+// over: x0, z0, x1, z1 in this mesh's space
+uniform vec4 holes[4];
+uniform int hole_count = 0;
 
 varying vec3 local_pos;
 
@@ -78,6 +82,12 @@ void vertex() {
 }
 
 void fragment() {
+	for (int i = 0; i < hole_count; i++) {
+		vec4 h = holes[i];
+		if (local_pos.x > h.x && local_pos.x < h.z && local_pos.z > h.y && local_pos.z < h.w) {
+			discard;
+		}
+	}
 	vec2 uv = UV * texture_scale;
 
 	// Organic patches choose the layer (same proportions as before)

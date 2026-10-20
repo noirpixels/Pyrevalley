@@ -5,6 +5,9 @@ extends StaticBody3D
 # light differently. The canopy starts above Veyl's head so vae can walk
 # up to the trunk; trees between Veyl and the camera dither out
 # (occluder.gdshader).
+# An axe fells it (harvest.gd): it topples away from whoever cut it,
+# leaving logs and a stump, and grows back after REGROW_TIME. The host
+# keeps count of the cuts (host_request); everyone sees it fall (fx_fell).
 
 const VARIANTS = 4
 const OCCLUDER_SHADER = preload("res://occluder.gdshader")
@@ -16,6 +19,19 @@ const NEEDLE_DARK = Color(0.05, 0.11, 0.08)
 const NEEDLE = Color(0.13, 0.26, 0.17)
 const NEEDLE_TIP = Color(0.27, 0.40, 0.22)
 
+# Axe power it takes to fell (a stone axe hits for 1)
+const CHOP_HP = 8.0
+const REGROW_TIME = 300.0
+# Won't grow back on top of a Veyl
+const REGROW_CLEARANCE = 8.0
+const LOGS = 3
+
+var felled: bool = false
+var chop_left: float = CHOP_HP
+var rest_basis: Basis
+var stump: MeshInstance3D = null
+var visuals: Array = []
+
 static var _meshes: Array[ArrayMesh] = []
 static var _material: ShaderMaterial
 static var _shadow_material: StandardMaterial3D
@@ -26,6 +42,9 @@ static var _contact_material: ShaderMaterial
 func _ready() -> void:
 	if _meshes.is_empty():
 		_build_shared()
+	add_to_group("trees")
+	add_to_group("net_objects")
+	rest_basis = basis
 
 	# Same tree every run: the variant comes from where it stands
 	var p = global_position
@@ -50,6 +69,143 @@ func _ready() -> void:
 	contact.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	contact.position.y = 0.06
 	add_child(contact)
+	visuals = [visual, caster, contact]
+
+
+# ============================================================
+# FELLING (host decides; everyone sees)
+# ============================================================
+
+# args: ["chop", axe power, fists shook it]
+func host_request(args: Array, sender: int):
+
+	if felled or args.size() < 3 or args[0] != "chop":
+		return
+	var veyl = NetSync.veyl_of(sender)
+	if veyl == null or veyl.global_position.distance_to(global_position) > 16.0:
+		return
+	if args[2] and randf() < 0.5:
+		drop("Branch", global_position + random_ring(2.5))
+	var amount = clampf(args[1], 0.0, 3.0)
+	if amount <= 0.0:
+		NetSync.object_fx(self, "shake")
+		return
+	chop_left -= amount
+	if chop_left > 0.0:
+		NetSync.object_fx(self, "shake")
+		return
+	# Topples away from whoever cut it
+	var away = (global_position - veyl.global_position) * Vector3(1, 0, 1)
+	away = away.normalized() if away.length() > 0.1 else Vector3.FORWARD
+	NetSync.object_fx(self, "fell", [away])
+	for i in LOGS:
+		drop("Log", global_position + away * (3.0 + i * 3.0) + random_ring(1.0))
+	drop("Branch", global_position + away * 6.0 + random_ring(2.0))
+	schedule_regrow(REGROW_TIME)
+
+
+func drop(item_name: String, at: Vector3):
+	NetSync.drop("loose", item_name, Vector3(at.x, 0, at.z))
+
+
+func random_ring(r: float) -> Vector3:
+	var a = randf() * TAU
+	return Vector3(cos(a), 0, sin(a)) * r
+
+
+func schedule_regrow(after: float):
+	get_tree().create_timer(after, false).timeout.connect(try_regrow)
+
+
+func try_regrow():
+
+	if not felled:
+		return
+	for veyl in NetSync.all_players():
+		if veyl.global_position.distance_to(global_position) < REGROW_CLEARANCE:
+			schedule_regrow(10.0)
+			return
+	NetSync.object_fx(self, "regrow")
+
+
+func fx_shake():
+
+	var tween = create_tween()
+	var lean = rest_basis.rotated(Vector3(randf_range(-1, 1), 0, randf_range(-1, 1)).normalized(), 0.04)
+	tween.tween_property(self, "basis", lean, 0.06)
+	tween.tween_property(self, "basis", rest_basis, 0.18)
+
+
+func fx_fell(away: Vector3):
+
+	felled = true
+	$CollisionShape3D.set_deferred("disabled", true)
+	if NetSync.near_me(global_position):
+		Sfx.play("hit_heavy", -2.0, 0.45)
+	# Tip over around the base, then sink away and leave the stump
+	var axis = Vector3.UP.cross(away).normalized()
+	var local_axis = (get_parent().global_basis.inverse() * axis).normalized()
+	var down = rest_basis.rotated(local_axis, PI / 2.0 * 0.95)
+	var tween = create_tween()
+	tween.tween_property(self, "basis", down, 1.1).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_interval(1.5)
+	tween.tween_callback(func():
+		for v in visuals:
+			v.visible = false
+		basis = rest_basis)
+	show_stump()
+
+
+func fx_regrow():
+
+	felled = false
+	chop_left = CHOP_HP
+	if stump:
+		stump.queue_free()
+		stump = null
+	basis = rest_basis.scaled(Vector3(0.15, 0.15, 0.15))
+	for v in visuals:
+		v.visible = true
+	$CollisionShape3D.set_deferred("disabled", false)
+	create_tween().tween_property(self, "basis", rest_basis, 4.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+func show_stump():
+
+	if stump:
+		return
+	stump = MeshInstance3D.new()
+	var mesh = CylinderMesh.new()
+	mesh.top_radius = 0.8
+	mesh.bottom_radius = 1.0
+	mesh.height = 1.2
+	var mat = StandardMaterial3D.new()
+	mat.albedo_color = BARK
+	mesh.material = mat
+	stump.mesh = mesh
+	stump.position = position + Vector3(0, 0.6, 0)
+	get_parent().add_child(stump)
+
+
+func net_snapshot():
+	return {"felled": true} if felled else null
+
+
+func apply_snapshot(_data):
+
+	felled = true
+	$CollisionShape3D.set_deferred("disabled", true)
+	for v in visuals:
+		v.visible = false
+	show_stump()
+	if Net.is_host():
+		schedule_regrow(REGROW_TIME)
+
+
+func _exit_tree():
+
+	if stump:
+		stump.queue_free()
 
 
 static func _build_shared() -> void:

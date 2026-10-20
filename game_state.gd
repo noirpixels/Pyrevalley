@@ -13,17 +13,18 @@ signal boss_engaged(boss)
 signal boss_disengaged
 signal boss_defeated_signal
 signal max_combo_changed
+# Gear picked up, equipped, worn down or broken
+signal gear_changed
 
 const SAVE_PATH = "user://embervale_save.json"
 # A guest's own progress in other people's worlds, kept apart from their solo save
 const GUEST_SAVE_PATH = "user://embervale_guest.json"
 const QUEST_GOAL = 3
 
+# The Codex's card for the sword Veyl wakes with. Materials and all other
+# gear are described in items.gd.
 const ITEMS = {
 	"Rustblade": {"kind": "weapon", "attack": 12, "range": 6.0, "cooldown": 0.4, "description": "A pitted old sword. It was in your hand when you woke."},
-	"Ember Fang": {"kind": "resource", "description": "Still warm. Taken from an Ember Wolf."},
-	"Moss Fiber": {"kind": "resource", "description": "Soft fibres that glow faintly in the dark."},
-	"Ash Core": {"kind": "resource", "description": "A dense lump of ash that hums when held."},
 }
 
 # Max Combo: how many hits Veyl can chain (see combo_tracker.gd). Rises by
@@ -40,7 +41,16 @@ const QUEST_COMPLETE = "complete"
 var loaded = false
 var save_path = SAVE_PATH
 
+const Items = preload("res://items.gd")
+const GEAR_SLOTS = ["weapon", "armor", "pickaxe", "axe"]
+
+# Stackable materials: name -> count
 var inventory = {}
+# Gear owned (items.gd), and what's equipped: slot -> gear id (-1 = none)
+var gear = []
+var equipped = {}
+var next_gear_id = 1
+# Name of what Veyl fights with ("Fists" with nothing equipped)
 var equipped_weapon = "Rustblade"
 var quest_state = QUEST_NOT_STARTED
 var quest_progress = 0
@@ -54,6 +64,9 @@ var max_combo = BASE_MAX_COMBO
 var combo_trophies = []
 # True while the Ashbound is fighting (shrines won't heal)
 var boss_fight = false
+# The host's world objects as last saved (net_sync.gd applies them):
+# dug blocks, felled trees, built stations, the blood moon's clock
+var saved_objects = {}
 
 
 # ============================================================
@@ -71,8 +84,13 @@ func ensure_loaded():
 
 
 func new_game():
-	inventory = {"Rustblade": 1}
-	equipped_weapon = "Rustblade"
+	inventory = {}
+	gear = []
+	equipped = {}
+	for slot in GEAR_SLOTS:
+		equipped[slot] = -1
+	next_gear_id = 1
+	equip(add_gear(Items.rustblade()))
 	quest_state = QUEST_NOT_STARTED
 	quest_progress = 0
 	collected_pickups = []
@@ -82,6 +100,7 @@ func new_game():
 	boss_defeated = false
 	max_combo = BASE_MAX_COMBO
 	combo_trophies = []
+	saved_objects = {}
 	# The codex is kept across runs; load_game() fills it from the save
 	loaded = true
 
@@ -109,8 +128,94 @@ func add_item(item_name: String, amount: int = 1):
 	inventory_changed.emit()
 
 
+func count(item_name: String) -> int:
+	return inventory.get(item_name, 0)
+
+
+# cost: {item name: amount}
+func can_afford(cost: Dictionary) -> bool:
+	for item_name in cost:
+		if count(item_name) < cost[item_name]:
+			return false
+	return true
+
+
+func spend(cost: Dictionary):
+	for item_name in cost:
+		inventory[item_name] = count(item_name) - cost[item_name]
+		if inventory[item_name] <= 0:
+			inventory.erase(item_name)
+	inventory_changed.emit()
+
+
+# The equipped weapon's numbers, or Veyl's fists with none
 func weapon() -> Dictionary:
-	return ITEMS[equipped_weapon]
+	var w = equipped_gear("weapon")
+	return Items.weapon_stats(w) if not w.is_empty() else Items.FISTS
+
+
+# ============================================================
+# GEAR
+# ============================================================
+
+func add_gear(item: Dictionary) -> int:
+	item["id"] = next_gear_id
+	next_gear_id += 1
+	gear.append(item)
+	gear_changed.emit()
+	return item["id"]
+
+
+func find_gear(id: int) -> Dictionary:
+	for item in gear:
+		if item["id"] == id:
+			return item
+	return {}
+
+
+func equipped_gear(slot: String) -> Dictionary:
+	return find_gear(equipped.get(slot, -1))
+
+
+func equip(id: int):
+	var item = find_gear(id)
+	if item.is_empty():
+		return
+	equipped[Items.slot(item)] = id
+	update_weapon_name()
+	gear_changed.emit()
+
+
+func unequip(slot: String):
+	equipped[slot] = -1
+	update_weapon_name()
+	gear_changed.emit()
+
+
+func update_weapon_name():
+	var w = equipped_gear("weapon")
+	equipped_weapon = Items.gear_name(w) if not w.is_empty() else "Fists"
+
+
+# Use wears gear down; at nothing it breaks, leaving scrap if it was metal
+func wear(slot: String, amount: float = 1.0):
+	var item = equipped_gear(slot)
+	if item.is_empty():
+		return
+	item["durability"] -= amount
+	if item["durability"] > 0.0:
+		gear_changed.emit()
+		return
+	var item_name = Items.gear_name(item)
+	gear.erase(item)
+	equipped[slot] = -1
+	update_weapon_name()
+	var scrap = Items.MATERIALS[item["material"]]["scrap"]
+	if scrap != "":
+		add_item(scrap)
+	notify.emit("Your %s breaks!" % item_name + ("  ·  +1 %s" % scrap if scrap != "" else ""))
+	Sfx.play("hit_heavy", -2.0, 0.6)
+	gear_changed.emit()
 
 
 # ============================================================
@@ -239,6 +344,7 @@ func reset_world():
 	boss_fight = false
 	checkpoint_position = null
 	player_position = null
+	saved_objects = {}
 
 
 # ============================================================
@@ -255,7 +361,9 @@ func save_game(player: Node3D = null):
 		"player_health": player_health,
 		"checkpoint_position": vec_to_array(checkpoint_position),
 		"inventory": inventory,
-		"equipped_weapon": equipped_weapon,
+		"gear": gear,
+		"equipped": equipped,
+		"next_gear_id": next_gear_id,
 		"quest_state": quest_state,
 		"quest_progress": quest_progress,
 		"collected_pickups": collected_pickups,
@@ -264,6 +372,9 @@ func save_game(player: Node3D = null):
 		"max_combo": max_combo,
 		"combo_trophies": combo_trophies,
 	}
+	# Only the world's owner saves it
+	if Net.is_host() and NetSync.world:
+		data["world_objects"] = NetSync.object_snapshots()
 
 	var file = FileAccess.open(save_path, FileAccess.WRITE)
 	if file:
@@ -283,18 +394,32 @@ func load_game() -> bool:
 	player_position = array_to_vec(data.get("player_position"))
 	player_health = data.get("player_health", -1.0)
 	checkpoint_position = array_to_vec(data.get("checkpoint_position"))
-	equipped_weapon = data.get("equipped_weapon", "Rustblade")
 	quest_state = data.get("quest_state", QUEST_NOT_STARTED)
 	quest_progress = int(data.get("quest_progress", 0))
 	collected_pickups = data.get("collected_pickups", [])
 	boss_defeated = data.get("boss_defeated", false)
 	max_combo = clampi(int(data.get("max_combo", BASE_MAX_COMBO)), BASE_MAX_COMBO, MAX_COMBO_LIMIT)
 	combo_trophies = data.get("combo_trophies", [])
+	saved_objects = data.get("world_objects", {})
 
 	# JSON numbers come back as floats
 	inventory = {}
 	for key in data.get("inventory", {}):
-		inventory[key] = int(data["inventory"][key])
+		# Older saves kept the Rustblade here; it's gear now
+		if key != "Rustblade":
+			inventory[key] = int(data["inventory"][key])
+	# Saves from before gear start with just the Rustblade (new_game above)
+	if data.has("gear"):
+		gear = []
+		for item in data["gear"]:
+			item["id"] = int(item["id"])
+			item["quality"] = int(item["quality"])
+			item["level"] = int(item["level"])
+			gear.append(item)
+		next_gear_id = int(data.get("next_gear_id", gear.size() + 1))
+		for slot in GEAR_SLOTS:
+			equipped[slot] = int(data.get("equipped", {}).get(slot, -1))
+		update_weapon_name()
 	CodexData.discovered = {}
 	for key in data.get("codex_discovered", {}):
 		CodexData.discovered[key] = int(data["codex_discovered"][key])

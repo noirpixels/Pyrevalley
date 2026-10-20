@@ -138,7 +138,8 @@ func hold(duration: float):
 
 # Called by the player as each move swings. The puppet swings the sword;
 # the sprite only lunges a little toward the cut.
-func swing(kind: String, aim: Vector3):
+# anim: the arm's swing when the move set has its own (thrust, jab)
+func swing(kind: String, aim: Vector3, anim: String = ""):
 
 	var aim_x = SpritePose.screen_x(sprite, aim)
 	var toward = sign_or_one(aim_x)
@@ -159,7 +160,9 @@ func swing(kind: String, aim: Vector3):
 
 	# The puppet works unflipped, so a flipped sprite swings the other way
 	var dir = -toward if sprite.flip_h else toward
-	puppet.swing("side" if kind == "left" or kind == "right" else kind, dir)
+	if anim == "":
+		anim = "side" if kind == "left" or kind == "right" else kind
+	puppet.swing(anim, dir)
 
 
 # Which art Veyl shows ("front", "back" or "right"); flip mirrors it to face left

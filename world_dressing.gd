@@ -15,6 +15,7 @@ extends Node3D
 const OCCLUDER_SHADER = preload("res://occluder.gdshader")
 const EmberWall = preload("res://ember_wall.gd")
 const Fx = preload("res://fx.gd")
+const MiningSites = preload("res://mining_sites.gd")
 
 const HALF_WIDTH = 40.0
 const Z_START = 120.0
@@ -60,6 +61,8 @@ func collect_keep_clear():
 
 func clear_of_gameplay(p: Vector3, margin: float) -> bool:
 
+	if MiningSites.covers(p, margin):
+		return false
 	for k in keep_clear:
 		if Vector2(p.x - k.x, p.z - k.z).length() < margin:
 			return false

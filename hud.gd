@@ -9,6 +9,7 @@ signal pause_pressed
 
 const UI = preload("res://ui_kit.gd")
 const InkBar = preload("res://ink_bar.gd")
+const Items = preload("res://items.gd")
 
 var player: Node3D
 var health_bar: InkBar
@@ -26,6 +27,8 @@ var hint_fade: Tween
 var toasts: VBoxContainer
 var message: Label
 var fade_rect: ColorRect
+# Tool bar: weapon, pickaxe, axe (keys 1-3), with wear
+var tool_bar: HBoxContainer
 # Multiplayer: the other players' health, and how friends can join
 var party: Label
 var session: Label
@@ -121,6 +124,18 @@ func _ready():
 	prompt.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	add_child(prompt)
 
+	# ---- Tool bar (bottom-centre) ----
+	tool_bar = HBoxContainer.new()
+	tool_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	tool_bar.offset_left = -360
+	tool_bar.offset_right = 360
+	tool_bar.offset_top = -78
+	tool_bar.offset_bottom = -46
+	tool_bar.alignment = BoxContainer.ALIGNMENT_CENTER
+	tool_bar.add_theme_constant_override("separation", 28)
+	tool_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tool_bar)
+
 	# ---- Controls hint (bottom-left), fades after a while ----
 	hint = UI.label("", 14, UI.MUTED)
 	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
@@ -172,6 +187,10 @@ func setup(target: Node3D):
 	player.health_changed.connect(update_health)
 	player.interact_target_changed.connect(_on_interact_target_changed)
 	player.combo_changed.connect(update_combo)
+	player.held_changed.connect(update_tool_bar)
+	player.held_changed.connect(update_weapon)
+	GameState.gear_changed.connect(update_tool_bar)
+	update_tool_bar()
 	update_health(player.health, player.max_health)
 	update_weapon()
 	update_quest()
@@ -190,6 +209,24 @@ func update_health(current: float, maximum: float):
 func update_weapon():
 
 	weapon_label.text = "%s  ·  ATK %d  ·  Max Combo %d" % [GameState.equipped_weapon, player.get_attack() if player else 0, GameState.max_combo]
+
+
+func update_tool_bar():
+
+	if player == null:
+		return
+	for child in tool_bar.get_children():
+		child.queue_free()
+	for i in player.HELD_SLOTS.size():
+		var slot = player.HELD_SLOTS[i]
+		var gear = GameState.equipped_gear(slot)
+		var text = "%d  " % (i + 1)
+		if gear.is_empty():
+			text += "Fists" if slot == "weapon" else "no %s" % slot
+		else:
+			text += "%s  %d%%" % [Items.gear_name(gear), ceil(100.0 * gear["durability"] / Items.max_durability(gear))]
+		var held = slot == player.held_slot
+		tool_bar.add_child(UI.label(text, 17, UI.EMBER if held else UI.MUTED))
 
 
 func update_combo(count: int, maximum: int, multiplier: float):

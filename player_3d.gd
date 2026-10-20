@@ -12,6 +12,8 @@ signal died
 signal respawned
 signal interact_target_changed(target)
 signal combo_changed(count, maximum, multiplier)
+# The tool bar slot in hand changed, or what's in it did
+signal held_changed
 
 const SlashEffect = preload("res://slash_effect.gd")
 const FloatingText = preload("res://floating_text.gd")
@@ -21,6 +23,8 @@ const VeylAnimator = preload("res://veyl_animator.gd")
 const HitSpark = preload("res://hit_spark.gd")
 const SpritePose = preload("res://sprite_pose.gd")
 const InkPost = preload("res://ink_post.gd")
+const Items = preload("res://items.gd")
+const Harvest = preload("res://harvest.gd")
 
 # An attack released this close to the end of the cooldown waits for it;
 # one released earlier is a fumble and breaks the combo
@@ -57,6 +61,18 @@ const PAD_MOVES = {"left": "strike_left", "right": "strike_right", "up": "launch
 const AIM_STICK_DEADZONE = 0.3
 # With a pad, an attack turns toward an enemy this far off the aim (degrees)
 const AIM_ASSIST_DEGREES = 70.0
+# Tool bar slots, in order (keys 1-3, d-pad left/right)
+const HELD_SLOTS = ["weapon", "pickaxe", "axe"]
+# Swinging a pickaxe or axe: reach and pace
+const TOOL_SWING = {"range": 7.0, "cooldown": 0.55, "moves": "sword", "attack": 0.0, "magic": ""}
+# Mosswoven gear mends this much health per second
+const MEND_RATE = 0.6
+# Ashweight hits shove and daze this much harder
+const ASHWEIGHT = 1.4
+# Emberbrand sets creatures burning for this long
+const BURN_TIME = 3.0
+# Hops up a one-block ledge at a mining site (blocks are taller than a jump)
+const CLIMB_SPEED = 15.5
 # Duels in the Proving Ring hit softer than Veyl's sword hits creatures
 const PVP_DAMAGE = 0.5
 # A remote Veyl this far from where its player has it jumps there
@@ -150,6 +166,11 @@ var last_swing_msec: int = -100000
 # directly. The duel's own camera shows both.
 var input_prefix: String = ""
 var opponent: Node3D = null
+# Which tool bar slot is in hand (HELD_SLOTS)
+var held_slot: String = "weapon"
+# What's in hand, as items.gd held_code (shown on other players' screens)
+var held_code: int = -1
+var base_defense: float
 # A menu or dialogue is open (multiplayer keeps running underneath)
 var input_blocked: bool = false
 var net_pos: Vector3
@@ -207,6 +228,7 @@ func _ready():
 		add_to_group("remote_players" if remote else "player")
 	start_position = global_position
 	health = max_health
+	base_defense = defense
 	if peer_id == NetSync.BOT_ID:
 		base_tint = SHADE_TINT
 
@@ -265,6 +287,9 @@ func _ready():
 		return
 
 	apply_camera_preset(zoom_state, true)
+
+	GameState.gear_changed.connect(refresh_gear)
+	refresh_gear()
 
 	GameState.boss_engaged.connect(_on_boss_engaged)
 	GameState.boss_disengaged.connect(_on_boss_disengaged)
@@ -352,6 +377,13 @@ func update_actions():
 		if Input.is_action_just_pressed(PAD_MOVES[kind]):
 			request_attack(kind)
 
+	for i in HELD_SLOTS.size():
+		if Input.is_action_just_pressed("tool_%d" % (i + 1)):
+			hold(HELD_SLOTS[i])
+	var step = int(Input.is_action_just_pressed("tool_next")) - int(Input.is_action_just_pressed("tool_prev"))
+	if step != 0:
+		hold(HELD_SLOTS[posmod(HELD_SLOTS.find(held_slot) + step, HELD_SLOTS.size())])
+
 
 # ============================================================
 # PHYSICS / MOVEMENT
@@ -365,6 +397,8 @@ func _physics_process(delta):
 
 	attack_timer = max(attack_timer - delta, 0.0)
 	lunge_timer = max(lunge_timer - delta, 0.0)
+	if uses_gear():
+		mend(delta)
 	update_combat(delta)
 	update_pending_swings(delta)
 	dash_timer = max(dash_timer - delta, 0.0)
@@ -496,6 +530,8 @@ func _physics_process(delta):
 		update_interact_target()
 
 	move_and_slide()
+	if is_on_floor() and direction != Vector3.ZERO:
+		climb(direction)
 	update_blob_shadow()
 
 
@@ -675,7 +711,7 @@ func update_sprite_facing():
 
 func request_attack(kind: String):
 
-	var move = CombatMoves.get_move(kind, not is_on_floor())
+	var move = CombatMoves.get_move(kind, not is_on_floor(), held_stats()["moves"])
 
 	if attack_timer <= 0.0:
 		perform_move(move)
@@ -714,10 +750,10 @@ func update_combat(delta):
 
 func perform_move(move: Dictionary):
 
-	var weapon = GameState.weapon()
+	var weapon = held_stats()
 	var attack_range: float = weapon["range"] * move["range"]
 	var arc: float = move["arc"]
-	if Pad.using_pad and not bot:
+	if Pad.using_pad and not bot and not holding_tool():
 		aim_assist(attack_range)
 	attack_timer = weapon["cooldown"] * move["cooldown"]
 	last_swing_msec = Time.get_ticks_msec()
@@ -731,8 +767,8 @@ func perform_move(move: Dictionary):
 		lunge_dir = aim_dir
 
 	if animator:
-		animator.swing(move["name"], aim_dir)
-	NetSync.share_player_fx("swing", [move["name"], aim_dir], net_id())
+		animator.swing(move["name"], aim_dir, move.get("anim", ""))
+	NetSync.share_player_fx("swing", [move["name"], aim_dir, weapon["moves"], weapon["range"]], net_id())
 
 
 func update_pending_swings(delta: float):
@@ -755,10 +791,16 @@ func nearest_enemy_distance() -> float:
 	return best
 
 
-# The blade connects: find what's in the arc and hit it
+# The blade connects: find what's in the arc and hit it. A pickaxe or axe
+# only works rock and wood (harvest.gd); a blade or fist that meets no
+# creature strikes whatever block or tree is in front instead.
 func resolve_swing(move: Dictionary, aim: Vector3):
 
-	var weapon = GameState.weapon()
+	if holding_tool():
+		Harvest.strike(self, move, aim, equipped(held_slot))
+		return
+
+	var weapon = held_stats()
 	var attack_range: float = weapon["range"] * move["range"]
 	var arc: float = move["arc"]
 	var half_arc = deg_to_rad(arc) / 2.0
@@ -800,7 +842,12 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 				continue
 			duels.append(other)
 
+	if hits.is_empty() and duels.is_empty() and uses_gear():
+		Harvest.strike(self, move, aim, equipped("weapon"))
+
 	if not hits.is_empty() or not duels.is_empty():
+		if uses_gear():
+			GameState.wear("weapon")
 		var combo_mult = combo.add_hit(GameState.max_combo)
 		for enemy in hits:
 			strike(enemy, move, combo_mult)
@@ -815,13 +862,13 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 			attack_timer += COMBO_END_LAG
 		emit_combo()
 
-	show_slash(move, aim)
+	show_slash(move, aim, weapon["range"])
 
 
 # Swing visual (spawned in world space, not under the scaled player)
-func show_slash(move: Dictionary, aim: Vector3):
+func show_slash(move: Dictionary, aim: Vector3, reach: float):
 
-	var attack_range: float = GameState.weapon()["range"] * move["range"]
+	var attack_range: float = reach * move["range"]
 	var arc: float = move["arc"]
 	var slash = SlashEffect.new()
 	slash.radius = attack_range
@@ -873,7 +920,10 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 	if move["name"] == "aerial" and not enemy.launched:
 		launch = 0.0
 
-	NetSync.hit_creature(enemy, amount, global_position, push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
+	var magic = held_stats()["magic"]
+	var heavy_mult = ASHWEIGHT if magic == "Ashweight" else 1.0
+	var burn = BURN_TIME if magic == "Emberbrand" else 0.0
+	NetSync.hit_creature(enemy, amount, global_position, push_dir * move["push"] * heavy_mult, move["spin"], move["dizzy"] * heavy_mult, launch, move["side"], burn)
 
 	if crit:
 		FloatingText.spawn(get_parent(), enemy.global_position + Vector3(0, enemy.height / 2.0 + 5.0, 0), "CRITICAL!", Color(1.0, 0.75, 0.2))
@@ -998,7 +1048,83 @@ func emit_combo():
 
 func get_attack() -> float:
 
-	return base_attack + GameState.weapon()["attack"]
+	return base_attack + held_stats()["attack"]
+
+
+# ============================================================
+# GEAR (tool bar, wear, armour, magic)
+# ============================================================
+
+# The Ember Shade and Local Duel fighters don't carry the player's gear
+func uses_gear() -> bool:
+	return not bot and input_prefix == ""
+
+
+func equipped(slot: String) -> Dictionary:
+	return GameState.equipped_gear(slot) if uses_gear() else {}
+
+
+func holding_tool() -> bool:
+	return held_slot != "weapon"
+
+
+# Reach, pace and move set of what's in hand. The Ember Shade and Local
+# Duel fighters always have a Rustblade of their own.
+func held_stats() -> Dictionary:
+
+	if not uses_gear():
+		return Items.weapon_stats(Items.rustblade())
+	if holding_tool():
+		return TOOL_SWING
+	return GameState.weapon()
+
+
+# Switch the tool bar slot (an empty pickaxe or axe slot can't be held)
+func hold(slot: String):
+
+	if slot != "weapon" and equipped(slot).is_empty():
+		GameState.notify.emit("No %s. Craft one first." % slot)
+		return
+	held_slot = slot
+	refresh_gear()
+
+
+# Gear changed: what's in hand, armour, and the HUD
+func refresh_gear():
+
+	if holding_tool() and equipped(held_slot).is_empty():
+		held_slot = "weapon"
+	var gear = equipped(held_slot)
+	held_code = Items.held_code(gear["type"], gear["material"]) if not gear.is_empty() else 0
+	show_held(held_code)
+	var armor = equipped("armor")
+	defense = base_defense + (Items.armor_defense(armor) if not armor.is_empty() else 0.0)
+	held_changed.emit()
+
+
+func show_held(code: int):
+
+	if animator == null:
+		return
+	var held = Items.held_from_code(code)
+	animator.puppet.set_held(held[0], held[1])
+
+
+func has_magic(magic: String) -> bool:
+
+	for slot in ["weapon", "armor"]:
+		if equipped(slot).get("magic", "") == magic:
+			return true
+	return false
+
+
+# Mosswoven gear slowly closes wounds
+func mend(delta: float):
+
+	if dead or health >= max_health or not has_magic("Mosswoven"):
+		return
+	health = min(health + MEND_RATE * delta, max_health)
+	health_changed.emit(health, max_health)
 
 
 func try_dash():
@@ -1010,7 +1136,7 @@ func try_dash():
 	dash_dir = horizontal.normalized() if horizontal.length() > 0.1 else aim_dir
 
 	dash_timer = dash_time
-	dash_cooldown_timer = dash_cooldown
+	dash_cooldown_timer = dash_cooldown * (0.7 if equipped("armor").get("magic", "") == "Fangswift" else 1.0)
 	Sfx.play("dash", -4.0)
 	invuln_timer = dash_time + 0.05
 	NetSync.share_player_fx("dash", [], net_id())
@@ -1030,6 +1156,8 @@ func take_damage(amount: int, from: Vector3):
 	invuln_timer = 0.3
 	if not bot:
 		Pad.rumble(0.4, 0.7, 0.2)
+	if uses_gear():
+		GameState.wear("armor")
 	if combo.count > 0:
 		combo.drop()
 		emit_combo()
@@ -1180,6 +1308,28 @@ func _on_boss_disengaged():
 # NETWORK (this machine's Veyl -> everyone else's copy of it)
 # ============================================================
 
+# How far Veyl's feet are below vair centre
+func foot_height() -> float:
+	return ($CollisionShape3D.shape as CylinderShape3D).height / 2.0 * scale.y
+
+
+# Walking into a block wall with room above it: hop up onto it, the way
+# Terraria steps you up a ledge
+func climb(direction: Vector3):
+
+	for k in get_slide_collision_count():
+		var hit = get_slide_collision(k)
+		var collider = hit.get_collider()
+		if collider == null or not collider.is_in_group("voxel_sites") or abs(hit.get_normal().y) > 0.3:
+			continue
+		if hit.get_normal().dot(direction) > -0.3:
+			continue
+		var up = Vector3.UP * 4.4
+		if not test_move(global_transform, up) and not test_move(global_transform.translated(up), direction.normalized() * 1.2):
+			velocity.y = CLIMB_SPEED
+		return
+
+
 # Who this Veyl is in the session
 func net_id() -> int:
 	return NetSync.BOT_ID if bot else Net.my_id()
@@ -1196,13 +1346,13 @@ func net_state() -> PackedFloat32Array:
 		global_position.x, global_position.y, global_position.z,
 		velocity.x, velocity.y, velocity.z,
 		aim_dir.x, aim_dir.z, flags, health,
-		dash_dir.x, dash_dir.z,
+		dash_dir.x, dash_dir.z, held_code, defense,
 	])
 
 
 func apply_net_state(s: PackedFloat32Array):
 
-	if s.size() < 12:
+	if s.size() < 14:
 		return
 	net_pos = Vector3(s[0], s[1], s[2])
 	net_vel = Vector3(s[3], s[4], s[5])
@@ -1216,6 +1366,10 @@ func apply_net_state(s: PackedFloat32Array):
 	dash_timer = 0.1 if flags & 4 != 0 else 0.0
 	health = s[9]
 	dash_dir = Vector3(s[10], 0, s[11])
+	defense = s[13]
+	if int(s[12]) != held_code:
+		held_code = int(s[12])
+		show_held(held_code)
 
 
 # Glide toward where its player has it, a little ahead along its velocity
@@ -1249,15 +1403,15 @@ func add_name_label():
 
 # ---- Moments another player's Veyl shows here ----
 
-func fx_swing(kind: String, aim: Vector3):
+func fx_swing(kind: String, aim: Vector3, moveset: String, reach: float):
 
 	if NetSync.near_me(global_position):
 		Sfx.play("attack", -4.0, SWING_PITCH.get(kind, 1.0))
 	last_swing_msec = Time.get_ticks_msec()
+	var move = CombatMoves.get_move(kind, kind == "aerial", moveset)
 	if animator:
-		animator.swing(kind, aim)
-	var move = CombatMoves.get_move(kind, kind == "aerial")
-	get_tree().create_timer(IMPACT_DELAY.get(kind, 0.07)).timeout.connect(show_slash.bind(move, aim))
+		animator.swing(kind, aim, move.get("anim", ""))
+	get_tree().create_timer(IMPACT_DELAY.get(kind, 0.07)).timeout.connect(show_slash.bind(move, aim, reach))
 
 
 func fx_dash():

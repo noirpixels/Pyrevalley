@@ -8,6 +8,10 @@ extends Node3D
 const InkPost = preload("res://ink_post.gd")
 const WorldDressing = preload("res://world_dressing.gd")
 const PvpRing = preload("res://pvp_ring.gd")
+const MiningSites = preload("res://mining_sites.gd")
+const Forage = preload("res://forage.gd")
+const Ruins = preload("res://ruins.gd")
+const BloodMoon = preload("res://blood_moon.gd")
 # How close to Rowan's fire his theme takes over
 const CAMP_RADIUS = 26.0
 
@@ -43,7 +47,12 @@ func _ready():
 	build_bounds()
 	build_embers()
 	add_child(InkPost.new())
+	# Mining sites first: they clear trees and rocks out of their way
+	add_child(MiningSites.new())
 	add_child(WorldDressing.new())
+	add_child(Forage.new())
+	add_child(Ruins.new())
+	add_child(BloodMoon.new())
 	add_child(PvpRing.new())
 	# Spawners and placed pickups are ready now; start (or join) the session
 	NetSync.enter_world.call_deferred(get_parent())

@@ -9,6 +9,7 @@ extends Node
 # the sides for the sword.
 const SIZE = Vector2i(320, 288)
 const InkSprite = preload("res://ink_sprite.gd")
+const HeldArt = preload("res://held_art.gd")
 
 # Cut lines per facing, in source pixels. Each arm is [rect, shoulder, hand];
 # the first arm holds the sword. Parts claim pixels in this order: arms,
@@ -68,6 +69,20 @@ const SWINGS = {
 		{"t": 0.25, "hand": 62.0, "blade": 84.0, "twist": 0.10, "body": Vector2(4, 6)},
 		{"t": 0.40},
 	],
+	# Thrust (spears): draw back, drive the point straight out
+	"thrust": [
+		{"t": 0.05, "hand": 120.0, "blade": 8.0, "twist": -0.08, "body": Vector2(-4, 0)},
+		{"t": 0.10, "hand": 2.0, "blade": 0.0, "twist": 0.12, "body": Vector2(8, 0), "smear": true},
+		{"t": 0.20, "hand": 6.0, "blade": 2.0, "twist": 0.10, "body": Vector2(6, 0)},
+		{"t": 0.32},
+	],
+	# Jab (fists): a short straight punch
+	"jab": [
+		{"t": 0.04, "hand": 110.0, "blade": 110.0, "twist": -0.06, "body": Vector2(-2, 0)},
+		{"t": 0.08, "hand": 5.0, "blade": 5.0, "twist": 0.10, "body": Vector2(6, 0)},
+		{"t": 0.16, "hand": 10.0, "blade": 10.0, "twist": 0.08, "body": Vector2(4, 0)},
+		{"t": 0.24},
+	],
 	# Aerial: a bigger chop with the whole body pitching into it
 	"aerial": [
 		{"t": 0.09, "hand": -140.0, "blade": -170.0, "twist": -0.15, "body": Vector2(-2, -4)},
@@ -107,10 +122,10 @@ func _init(textures: Dictionary):
 	add_child(viewport)
 	texture = viewport.get_texture()
 
-	var sword = make_sword()
+	var held = HeldArt.get_art("Sword", "Rusted")
 	for key in textures:
 		if textures[key]:
-			rigs[key] = build_rig(RIGS[key], textures[key], sword)
+			rigs[key] = build_rig(RIGS[key], textures[key], held)
 			viewport.add_child(rigs[key]["root"])
 
 	smear = Polygon2D.new()
@@ -118,6 +133,20 @@ func _init(textures: Dictionary):
 	viewport.add_child(smear)
 
 	set_facing("front")
+
+
+# What's in Veyl's hand ("" for nothing: fists)
+func set_held(type: String, material: String):
+
+	var art = HeldArt.get_art(type, material) if type != "" else {}
+	for key in rigs:
+		var held: Sprite2D = rigs[key]["sword"]
+		held.visible = not art.is_empty()
+		if art.is_empty():
+			continue
+		held.texture = art["texture"]
+		held.offset = -art["grip"]
+		rigs[key]["blade_length"] = art["length"]
 
 
 func set_facing(which: String):
@@ -317,7 +346,7 @@ static func mirror(angle: float, dir: float) -> float:
 # BUILDING
 # ============================================================
 
-func build_rig(def: Dictionary, source: Texture2D, sword_tex: Texture2D) -> Dictionary:
+func build_rig(def: Dictionary, source: Texture2D, held: Dictionary) -> Dictionary:
 
 	# Lit on the sun side before cutting, so cut lines don't get a rim
 	var img = InkSprite.ink_image(InkSprite.load_image(source), 0.45)
@@ -421,11 +450,11 @@ func build_rig(def: Dictionary, source: Texture2D, sword_tex: Texture2D) -> Dict
 		for arm in arms:
 			body.add_child(arm)
 
-	# The sword goes in the first arm's fist, drawn under the mitten
+	# The held item goes in the first arm's fist, drawn under the mitten
 	var sword = Sprite2D.new()
-	sword.texture = sword_tex
+	sword.texture = held["texture"]
 	sword.centered = false
-	sword.offset = -SWORD_GRIP
+	sword.offset = -held["grip"]
 	sword.position = def["arms"][0][2] - def["arms"][0][1]
 	sword.show_behind_parent = true
 	arms[0].add_child(sword)
@@ -433,7 +462,7 @@ func build_rig(def: Dictionary, source: Texture2D, sword_tex: Texture2D) -> Dict
 	return {
 		"root": root, "body": body, "body_rest": hip, "head": head, "torso": torso,
 		"arms": arms, "legs": legs, "leg_rest": leg_rest, "sword": sword,
-		"side": side, "rest_blade": def["rest_blade"], "blade_length": SWORD_GRIP.y,
+		"side": side, "rest_blade": def["rest_blade"], "blade_length": held["length"],
 	}
 
 
@@ -453,62 +482,3 @@ func part(img: Image, pivot: Vector2) -> Node2D:
 static func blank(w: int, h: int) -> Image:
 
 	return Image.create(w, h, false, Image.FORMAT_RGBA8)
-
-
-# ============================================================
-# THE RUSTBLADE
-# ============================================================
-
-# Where the hand grips the sword, in the sword image (the blade points up)
-const SWORD_GRIP = Vector2(12, 87)
-
-
-# A pitted old sword in pixel art, drawn here so it needs no imported file
-static func make_sword() -> Texture2D:
-
-	var img = blank(25, 98)
-	var light = Color(0.88, 0.86, 0.82)
-	var mid = Color(0.64, 0.62, 0.6)
-	var fuller = Color(0.5, 0.48, 0.48)
-	var dark = Color(0.4, 0.38, 0.4)
-	var rust = Color(0.55, 0.3, 0.18)
-	var guard = Color(0.78, 0.46, 0.2)
-	var guard_dark = Color(0.5, 0.28, 0.14)
-	var grip = Color(0.25, 0.17, 0.14)
-
-	# Broad blade (it has to read when Veyl is small on screen), tapered
-	# to a point, with a groove down the middle
-	for y in range(1, 78):
-		var half = min(5, 1 + y / 4)
-		for x in range(12 - half, 13 + half):
-			var c = mid
-			if x <= 13 - half:
-				c = light
-			elif x >= 11 + half:
-				c = dark
-			elif x == 12 and y > 18 and y < 72:
-				c = fuller
-			img.set_pixel(x, y, c)
-	for p in [Vector2i(14, 24), Vector2i(10, 38), Vector2i(15, 39), Vector2i(14, 40), Vector2i(10, 57), Vector2i(15, 66), Vector2i(9, 68)]:
-		img.set_pixel(p.x, p.y, rust)
-
-	# Crossguard, grip and pommel
-	img.fill_rect(Rect2i(1, 77, 23, 5), guard)
-	img.fill_rect(Rect2i(1, 81, 23, 1), guard_dark)
-	img.fill_rect(Rect2i(10, 82, 5, 10), grip)
-	img.fill_rect(Rect2i(9, 92, 7, 4), guard)
-	img.fill_rect(Rect2i(9, 95, 7, 1), guard_dark)
-	var outline = Color(0.08, 0.06, 0.07)
-
-	# One-pixel dark outline round everything
-	var out = img.duplicate()
-	for y in img.get_height():
-		for x in img.get_width():
-			if img.get_pixel(x, y).a > 0.0:
-				continue
-			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var q = Vector2i(x, y) + d
-				if q.x >= 0 and q.y >= 0 and q.x < img.get_width() and q.y < img.get_height() and img.get_pixel(q.x, q.y).a > 0.0:
-					out.set_pixel(x, y, outline)
-					break
-	return ImageTexture.create_from_image(out)
