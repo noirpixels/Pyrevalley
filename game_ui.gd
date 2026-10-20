@@ -68,6 +68,10 @@ func _ready():
 	player.died.connect(_on_player_died)
 	GameState.boss_defeated_signal.connect(_on_boss_defeated)
 
+	if Net.join_notice != "":
+		hud.toast.call_deferred(Net.join_notice)
+		Net.join_notice = ""
+
 
 func _input(event):
 

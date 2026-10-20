@@ -21,6 +21,7 @@ const PROTOCOL = 1
 const ANNOUNCE_EVERY = 1.0
 # A LAN game that stops announcing itself drops off the list
 const LAN_TIMEOUT = 3.5
+const NameFilter = preload("res://name_filter.gd")
 const GAME_SCENE = "res://game.tscn"
 const MENU_SCENE = "res://main_menu.tscn"
 
@@ -30,6 +31,10 @@ var player_name: String = "Veyl"
 var roster: Dictionary = {}
 # Shown by the main menu after a session ends
 var last_message: String = ""
+# Shown in game after joining (the host changed this player's name)
+var join_notice: String = ""
+# Host: guests it removed, so their leaving reads as that
+var kicked_ids: Array = []
 
 # Announces a hosted game, or listens for them from the menu
 var discovery: PacketPeerUDP = null
@@ -89,6 +94,9 @@ func everyone(node: Node, method: StringName, args: Array = []):
 
 func host_game(requested_name: String) -> String:
 
+	var why = NameFilter.problem(requested_name)
+	if why != "":
+		return why
 	var peer = ENetMultiplayerPeer.new()
 	if peer.create_server(PORT, MAX_PLAYERS - 1) != OK:
 		return "Couldn't host: port %d is already in use." % PORT
@@ -106,6 +114,9 @@ func host_game(requested_name: String) -> String:
 
 func join_game(address: String, requested_name: String) -> String:
 
+	var why = NameFilter.problem(requested_name)
+	if why != "":
+		return why
 	address = address.strip_edges()
 	if address == "":
 		return "Enter the host's address."
@@ -121,11 +132,11 @@ func join_game(address: String, requested_name: String) -> String:
 func begin(requested_name: String):
 
 	online = true
-	player_name = requested_name.strip_edges().left(16)
-	if player_name == "":
-		player_name = "Veyl"
+	player_name = NameFilter.tidy(requested_name)
 	roster = {}
 	last_message = ""
+	join_notice = ""
+	kicked_ids = []
 	NetSync.reset()
 
 
@@ -189,7 +200,11 @@ func _on_peer_disconnected(id: int):
 	sync_roster.rpc(roster)
 	roster_changed.emit()
 	NetSync.peer_left(id)
-	NetSync.notify_all("%s left." % who)
+	if id in kicked_ids:
+		kicked_ids.erase(id)
+		NetSync.notify_all("%s was removed by the host." % who)
+	else:
+		NetSync.notify_all("%s left." % who)
 
 
 # Guest -> host, first thing after connecting
@@ -204,24 +219,54 @@ func register(requested_name: String, protocol: int):
 		get_tree().create_timer(0.5).timeout.connect(multiplayer.multiplayer_peer.disconnect_peer.bind(id))
 		return
 
-	roster[id] = {"name": unique_name(requested_name)}
+	# Checked here as well as in the guest's menu, so a modified game
+	# can't sneak a name through
+	var why = NameFilter.problem(requested_name)
+	var given = unique_name("Veyl" if why != "" else requested_name)
+	roster[id] = {"name": given}
 	sync_roster.rpc(roster)
 	roster_changed.emit()
+	if why != "":
+		name_notice.rpc_id(id, "%s You're %s in this game." % [why.replace(" Pick another.", ""), given])
 	welcome_to_session.rpc_id(id)
 
 
 func unique_name(wanted: String) -> String:
 
-	wanted = wanted.strip_edges().left(16)
+	wanted = NameFilter.tidy(wanted)
 	if wanted == "":
 		wanted = "Veyl"
 	var taken = roster.values().map(func(p): return p["name"])
 	var candidate = wanted
 	var n = 2
 	while candidate in taken:
-		candidate = "%s %d" % [wanted, n]
+		# Room for the number within the length limit
+		candidate = "%s %d" % [wanted.left(NameFilter.MAX_LENGTH - 3), n]
 		n += 1
 	return candidate
+
+
+@rpc("authority", "call_remote", "reliable")
+func name_notice(text: String):
+	join_notice = text
+
+
+# Host: remove a guest from the session
+func kick(id: int):
+
+	if not (is_host() and roster.has(id)) or id == my_id():
+		return
+	kicked_ids.append(id)
+	kicked.rpc_id(id)
+	# A moment for the message to arrive before the line drops
+	get_tree().create_timer(0.3).timeout.connect(func():
+		if multiplayer.multiplayer_peer is ENetMultiplayerPeer:
+			multiplayer.multiplayer_peer.disconnect_peer(id))
+
+
+@rpc("authority", "call_remote", "reliable")
+func kicked():
+	leave("The host removed you from the session.")
 
 
 @rpc("authority", "call_remote", "reliable")
