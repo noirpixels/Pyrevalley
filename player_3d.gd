@@ -145,6 +145,11 @@ var bot_move: Vector3 = Vector3.ZERO
 var base_tint: Color = Color.WHITE
 # When this Veyl last swung (the bot reads it to dodge)
 var last_swing_msec: int = -100000
+# Local Duel (duel.gd): read this player's half of the keyboard ("p1" or
+# "p2", pad.gd DUEL_ACTIONS), always face the opponent, and hit them
+# directly. The duel's own camera shows both.
+var input_prefix: String = ""
+var opponent: Node3D = null
 # A menu or dialogue is open (multiplayer keeps running underneath)
 var input_blocked: bool = false
 var net_pos: Vector3
@@ -193,6 +198,8 @@ func _ready():
 	if bot:
 		add_to_group("duel_bots")
 		add_to_group("remote_players")
+	elif input_prefix != "":
+		add_to_group("duelists")
 	elif peer_id == NetSync.BOT_ID:
 		add_to_group("remote_players")
 	else:
@@ -203,7 +210,7 @@ func _ready():
 	if peer_id == NetSync.BOT_ID:
 		base_tint = SHADE_TINT
 
-	if not remote and not bot:
+	if not remote and not bot and input_prefix == "":
 		# Restore progress from the save (position, HP)
 		GameState.ensure_loaded()
 
@@ -252,6 +259,11 @@ func _ready():
 		add_name_label()
 		return
 
+	if input_prefix != "":
+		if main_cam:
+			main_cam.current = false
+		return
+
 	apply_camera_preset(zoom_state, true)
 
 	GameState.boss_engaged.connect(_on_boss_engaged)
@@ -265,7 +277,7 @@ func _ready():
 # Unhandled so clicks on HUD buttons don't also swing the sword
 func _unhandled_input(event):
 
-	if dead or remote or bot or input_blocked:
+	if dead or remote or bot or input_blocked or input_prefix != "":
 		return
 
 	# --------------------------------------------------------
@@ -294,6 +306,18 @@ func _unhandled_input(event):
 				var pan_up = (pan_amount > 0.0) if scroll_flip else (pan_amount < 0.0)
 				scroll_attack("up" if pan_up else "down")
 
+
+
+# Local Duel: this player's half of the keyboard
+func update_duel_actions():
+
+	if input_blocked:
+		return
+	if Input.is_action_just_pressed(input_prefix + "_dash"):
+		try_dash()
+	for kind in PAD_MOVES:
+		if Input.is_action_just_pressed(input_prefix + "_" + PAD_MOVES[kind]):
+			request_attack(kind)
 
 
 # Dash, interact, zoom and pad attacks are actions (pad.gd), polled so a
@@ -356,7 +380,7 @@ func _physics_process(delta):
 		velocity.y -= gravity * delta
 
 
-	if not bot:
+	if not bot and input_prefix == "":
 		update_camera(delta)
 		RenderingServer.global_shader_parameter_set("player_position", global_position)
 
@@ -373,10 +397,12 @@ func _physics_process(delta):
 	# JUMP
 	# --------------------------------------------------------
 
-	if not bot:
+	if input_prefix != "":
+		update_duel_actions()
+	elif not bot:
 		update_actions()
 
-	if Input.is_action_pressed("jump") and not input_blocked and not bot:
+	if Input.is_action_pressed(input_prefix + "_jump" if input_prefix != "" else "jump") and not input_blocked and not bot:
 
 		if is_on_floor():
 
@@ -388,7 +414,8 @@ func _physics_process(delta):
 	# --------------------------------------------------------
 
 	# A stick gives partial tilt for a slower walk; keys are always full
-	var direction_2d = Vector2.ZERO if input_blocked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var p = input_prefix + "_" if input_prefix != "" else ""
+	var direction_2d = Vector2.ZERO if input_blocked else Input.get_vector(p + "move_left", p + "move_right", p + "move_up", p + "move_down")
 
 	# Rotate input by the camera yaw so W is always "up" on screen
 	var direction = iso_basis() * Vector3(
@@ -435,6 +462,16 @@ func _physics_process(delta):
 		# duel_bot.gd aims
 		pass
 
+	elif input_prefix != "":
+
+		# Fighting-game style: always square up to the opponent
+		var to_foe = (opponent.global_position - global_position) if opponent else Vector3.ZERO
+		to_foe.y = 0
+		if to_foe.length() > 0.1:
+			aim_dir = to_foe.normalized()
+		elif direction != Vector3.ZERO:
+			aim_dir = Vector3(direction.x, 0, direction.z).normalized()
+
 	elif Pad.using_pad:
 
 		# Right stick aims; without it Veyl faces where vae walks
@@ -455,7 +492,7 @@ func _physics_process(delta):
 			aim_dir = to_target.normalized()
 
 	update_sprite_facing()
-	if not bot:
+	if not bot and input_prefix == "":
 		update_interact_target()
 
 	move_and_slide()
@@ -742,10 +779,16 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 		hits.append(enemy)
 
 	# Other players (and the Ember Shade), only while both are inside the
-	# Proving Ring. The Shade goes after the real players.
+	# Proving Ring. The Shade goes after the real players. In a Local Duel
+	# the opponent is the only target.
 	var duels = []
+	if opponent and not opponent.dead:
+		var offset = opponent.global_position - global_position
+		offset.y = 0
+		if offset.length() <= attack_range + 1.5 and (offset.length() <= 0.01 or aim.angle_to(offset.normalized()) <= half_arc):
+			duels.append(opponent)
 	var ring = get_tree().get_first_node_in_group("pvp_ring")
-	if ring and ring.contains(global_position):
+	if ring and ring.contains(global_position) and opponent == null:
 		for other in get_tree().get_nodes_in_group("players" if bot else "remote_players"):
 			var offset = other.global_position - global_position
 			offset.y = 0
@@ -873,7 +916,10 @@ func duel_strike(other: Node3D, move: Dictionary, combo_mult: float):
 	var away = other.global_position - global_position
 	away.y = 0
 	away = away.normalized() if away.length() > 0.01 else aim_dir
-	NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6, net_id())
+	if other == opponent:
+		other.take_hit(amount, global_position, away * move["push"] * 0.6, 0)
+	else:
+		NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6, net_id())
 
 	var spark_at = other.global_position + Vector3(0, 3.0, 0)
 	HitSpark.spawn(get_parent(), spark_at, away + Vector3.UP * 0.6, Color(1.0, 0.5, 0.15), 14)

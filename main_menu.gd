@@ -13,6 +13,8 @@ func _ready() -> void:
 		_on_multiplayer_button_pressed()
 func _on_play_button_pressed() -> void:
 	get_tree().change_scene_to_file("res://game.tscn")
+func _on_duel_button_pressed() -> void:
+	get_tree().change_scene_to_file("res://duel.tscn")
 func _on_multiplayer_button_pressed() -> void:
 	var lobby = preload("res://multiplayer_menu.gd").new()
 	add_child(lobby)

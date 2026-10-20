@@ -17,6 +17,10 @@ const SEGMENTS = 12
 # Portal by the Starting Area, inside the level bounds
 const OUTER_PORTAL = Vector3(14, 0, 110)
 
+# Local Duel (duel.gd) uses just the walls: no portals, no Shade, and it
+# stays where it's put
+var arena_only: bool = false
+
 
 class Portal:
 	extends Node3D
@@ -56,7 +60,8 @@ class Portal:
 func _ready():
 
 	add_to_group("pvp_ring")
-	position = CENTRE
+	if not arena_only:
+		position = CENTRE
 
 	var chord = 2.0 * RADIUS * sin(PI / SEGMENTS)
 	for i in SEGMENTS:
@@ -83,6 +88,9 @@ func _ready():
 	title.modulate = Color(1.0, 0.7, 0.4)
 	title.position = Vector3(0, 10, 0)
 	add_child(title)
+
+	if arena_only:
+		return
 
 	var inner = Portal.new("Back to the Emberwood", "Leave the Proving Ring", outer_portal_point)
 	inner.position = Vector3(0, 0, RADIUS - 5.0)

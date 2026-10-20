@@ -41,6 +41,17 @@ const ACTIONS = {
 	"zoom_out": [KEY_MINUS, KEY_KP_SUBTRACT, {"button": JOY_BUTTON_DPAD_DOWN}],
 }
 
+# Local Duel (duel.gd): two players on one keyboard, combat keys only.
+# {"key", "location"} tells left and right Shift apart.
+const DUEL_ACTIONS = {
+	"p1_move_left": [KEY_A], "p1_move_right": [KEY_D], "p1_move_up": [KEY_W], "p1_move_down": [KEY_S],
+	"p1_strike_left": [KEY_X], "p1_strike_right": [KEY_C], "p1_launch": [KEY_Q], "p1_slam": [KEY_E],
+	"p1_jump": [KEY_G], "p1_dash": [{"key": KEY_SHIFT, "location": KEY_LOCATION_LEFT}],
+	"p2_move_left": [KEY_LEFT], "p2_move_right": [KEY_RIGHT], "p2_move_up": [KEY_UP], "p2_move_down": [KEY_DOWN],
+	"p2_strike_left": [KEY_SLASH], "p2_strike_right": [{"key": KEY_SHIFT, "location": KEY_LOCATION_RIGHT}],
+	"p2_launch": [KEY_COMMA], "p2_slam": [KEY_PERIOD], "p2_jump": [KEY_L], "p2_dash": [KEY_SEMICOLON],
+}
+
 # Stick tilt needed before it counts; triggers need a firmer pull
 const STICK_DEADZONE = 0.25
 const TRIGGER_DEADZONE = 0.5
@@ -84,6 +95,11 @@ func _ready():
 			InputMap.add_action(action, deadzone)
 		for entry in ACTIONS[action]:
 			InputMap.action_add_event(action, make_event(entry))
+	for action in DUEL_ACTIONS:
+		if not InputMap.has_action(action):
+			InputMap.add_action(action)
+		for entry in DUEL_ACTIONS[action]:
+			InputMap.action_add_event(action, make_event(entry))
 
 	# Menu navigation on the D-pad and left stick
 	for dir in [["ui_left", JOY_BUTTON_DPAD_LEFT, JOY_AXIS_LEFT_X, -1.0], ["ui_right", JOY_BUTTON_DPAD_RIGHT, JOY_AXIS_LEFT_X, 1.0],
@@ -104,6 +120,12 @@ func make_event(entry) -> InputEvent:
 		var key = InputEventKey.new()
 		key.keycode = entry
 		return key
+	if entry.has("key"):
+		# Godot only tells left from right on the physical key
+		var sided = InputEventKey.new()
+		sided.physical_keycode = entry["key"]
+		sided.location = entry["location"]
+		return sided
 	if entry.has("button"):
 		var button = InputEventJoypadButton.new()
 		button.button_index = entry["button"]

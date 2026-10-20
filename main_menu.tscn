@@ -70,6 +70,12 @@ tooltip_text = "MULTIPLAYER"
 theme_override_font_sizes/font_size = 24
 text = "MULTIPLAYER"
 
+[node name="DuelButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=1498119644]
+layout_mode = 2
+tooltip_text = "LOCAL DUEL"
+theme_override_font_sizes/font_size = 24
+text = "LOCAL DUEL"
+
 [node name="CodexButton" type="Button" parent="MenuCenter/MenuButtons" unique_id=2084985165]
 layout_mode = 2
 tooltip_text = "PLAY"
@@ -96,6 +102,7 @@ text = "QUIT"
 
 [connection signal="pressed" from="MenuCenter/MenuButtons/PlayButton" to="." method="_on_play_button_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuButtons/MultiplayerButton" to="." method="_on_multiplayer_button_pressed"]
+[connection signal="pressed" from="MenuCenter/MenuButtons/DuelButton" to="." method="_on_duel_button_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuButtons/CodexButton" to="." method="_on_codex_button_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuButtons/SettingsButton" to="." method="_on_settings_button_pressed"]
 [connection signal="pressed" from="MenuCenter/MenuButtons/CreditsButton" to="." method="_on_credits_button_pressed"]
