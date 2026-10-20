@@ -1,5 +1,10 @@
 extends CharacterBody3D
 
+# Veyl. In a multiplayer session every player has one: theirs is run here
+# (group "player", camera, input) and everyone else's is a remote copy
+# that follows the state their machine sends (net_sync.gd). Damage to a
+# Veyl is always applied by its own player's machine.
+
 signal health_changed(current, maximum)
 signal died
 signal respawned
@@ -50,6 +55,10 @@ const PAD_MOVES = {"left": "strike_left", "right": "strike_right", "up": "launch
 const AIM_STICK_DEADZONE = 0.3
 # With a pad, an attack turns toward an enemy this far off the aim (degrees)
 const AIM_ASSIST_DEGREES = 70.0
+# Duels in the Proving Ring hit softer than Veyl's sword hits creatures
+const PVP_DAMAGE = 0.5
+# A remote Veyl this far from where its player has it jumps there
+const NET_SNAP_DIST = 10.0
 
 @export_group("2.5D Character Textures")
 @export var texture_front: Texture2D
@@ -123,6 +132,19 @@ var lunge_timer: float = 0.0
 var lunge_dir: Vector3 = Vector3.ZERO
 var hit_stop_scale: float = 1.0
 
+# Another player's Veyl, shown here
+var remote: bool = false
+var peer_id: int = 1
+# A menu or dialogue is open (multiplayer keeps running underneath)
+var input_blocked: bool = false
+var net_pos: Vector3
+var net_vel: Vector3 = Vector3.ZERO
+var net_age: float = 0.0
+var remote_on_floor: bool = true
+# Who last hit this Veyl in the Proving Ring
+var last_attacker: int = 0
+var died_in_ring: bool = false
+
 @onready var sprite: Sprite3D = find_child("CharacterSprite")
 @onready var camera_boom: Node3D = find_child("CameraBoom")
 @onready var spring_arm: SpringArm3D = find_child("SpringArm3D")
@@ -156,20 +178,22 @@ var presets = {
 
 func _ready():
 
-	add_to_group("player")
+	add_to_group("players")
+	add_to_group("remote_players" if remote else "player")
 	start_position = global_position
-
-	# Restore progress from the save (position, HP)
-	GameState.ensure_loaded()
 	health = max_health
 
-	if GameState.player_position != null:
-		global_position = GameState.player_position
-	if GameState.player_health > 0.0:
-		health = min(GameState.player_health, max_health)
+	if not remote:
+		# Restore progress from the save (position, HP)
+		GameState.ensure_loaded()
 
-	# Isometric: free cursor for aiming
-	Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
+		if GameState.player_position != null:
+			global_position = GameState.player_position
+		if GameState.player_health > 0.0:
+			health = min(GameState.player_health, max_health)
+
+		# Isometric: free cursor for aiming
+		Input.set_mouse_mode(Input.MOUSE_MODE_VISIBLE)
 
 	# Character sprite always faces the camera
 	if sprite:
@@ -195,6 +219,16 @@ func _ready():
 		spring_arm.add_excluded_object(get_rid())
 		spring_arm.collision_mask = 0
 
+	if remote:
+		# Walk-through, so players never shove each other around
+		collision_layer = 0
+		collision_mask = 0
+		net_pos = global_position
+		if main_cam:
+			main_cam.current = false
+		add_name_label()
+		return
+
 	apply_camera_preset(zoom_state, true)
 
 	GameState.boss_engaged.connect(_on_boss_engaged)
@@ -208,7 +242,7 @@ func _ready():
 # Unhandled so clicks on HUD buttons don't also swing the sword
 func _unhandled_input(event):
 
-	if dead:
+	if dead or remote or input_blocked:
 		return
 
 	# --------------------------------------------------------
@@ -243,6 +277,11 @@ func _unhandled_input(event):
 # trigger pull counts once rather than on every bit of travel
 func update_actions():
 
+	# Skipping the frame count here makes the first free frame count as
+	# "just unpaused" too
+	if input_blocked:
+		return
+
 	# The press that closed a menu shouldn't also act in the game
 	var frame = Engine.get_physics_frames()
 	var just_unpaused = frame - last_physics_frame > 1
@@ -272,6 +311,10 @@ func update_actions():
 # ============================================================
 
 func _physics_process(delta):
+
+	if remote:
+		remote_process(delta)
+		return
 
 	attack_timer = max(attack_timer - delta, 0.0)
 	lunge_timer = max(lunge_timer - delta, 0.0)
@@ -308,7 +351,7 @@ func _physics_process(delta):
 
 	update_actions()
 
-	if Input.is_action_pressed("jump"):
+	if Input.is_action_pressed("jump") and not input_blocked:
 
 		if is_on_floor():
 
@@ -320,7 +363,7 @@ func _physics_process(delta):
 	# --------------------------------------------------------
 
 	# A stick gives partial tilt for a slower walk; keys are always full
-	var direction_2d = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	var direction_2d = Vector2.ZERO if input_blocked else Input.get_vector("move_left", "move_right", "move_up", "move_down")
 
 	# Rotate input by the camera yaw so W is always "up" on screen
 	var direction = iso_basis() * Vector3(
@@ -618,6 +661,7 @@ func perform_move(move: Dictionary):
 
 	if animator:
 		animator.swing(move["name"], aim_dir)
+	NetSync.share_player_fx("swing", [move["name"], aim_dir])
 
 
 func update_pending_swings(delta: float):
@@ -662,10 +706,27 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 
 		hits.append(enemy)
 
-	if not hits.is_empty():
+	# Other players, only while both are inside the Proving Ring
+	var duels = []
+	var ring = get_tree().get_first_node_in_group("pvp_ring")
+	if ring and ring.contains(global_position):
+		for other in get_tree().get_nodes_in_group("remote_players"):
+			var offset = other.global_position - global_position
+			offset.y = 0
+			if other.dead or not ring.contains(other.global_position):
+				continue
+			if offset.length() > attack_range + 1.5:
+				continue
+			if offset.length() > 0.01 and aim.angle_to(offset.normalized()) > half_arc:
+				continue
+			duels.append(other)
+
+	if not hits.is_empty() or not duels.is_empty():
 		var combo_mult = combo.add_hit(GameState.max_combo)
 		for enemy in hits:
 			strike(enemy, move, combo_mult)
+		for other in duels:
+			duel_strike(other, move, combo_mult)
 
 		# The hit that reaches Max Combo (or an aerial finisher) ends the chain
 		if combo.finished(GameState.max_combo) or move["name"] == "aerial":
@@ -675,7 +736,14 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 			attack_timer += COMBO_END_LAG
 		emit_combo()
 
-	# Swing visual (spawned in world space, not under the scaled player)
+	show_slash(move, aim)
+
+
+# Swing visual (spawned in world space, not under the scaled player)
+func show_slash(move: Dictionary, aim: Vector3):
+
+	var attack_range: float = GameState.weapon()["range"] * move["range"]
+	var arc: float = move["arc"]
 	var slash = SlashEffect.new()
 	slash.radius = attack_range
 	slash.arc_degrees = arc
@@ -705,16 +773,34 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 	if enemy.is_dizzy():
 		mult *= DIZZY_BONUS
 
-	enemy.take_damage(
-		CodexData.calc_damage(get_attack() * mult, enemy.data["defense"]),
-		global_position
-	)
+	var amount = CodexData.calc_damage(get_attack() * mult, enemy.data["defense"])
+	# Judged here, so a guest's killing blow lands with no wait for the host
+	var killing = enemy.health - amount <= 0.0
+
+	var away = enemy.global_position - global_position
+	away.y = 0
+	away = away.normalized() if away.length() > 0.01 else aim_dir
+
+	var push_dir = away
+	var screen_dir: Vector2 = move["screen_dir"]
+	if screen_dir != Vector2.ZERO:
+		# Screen direction of the attack, a little away from Veyl so the
+		# target isn't shoved back into the swing
+		var world = iso_basis() * Vector3(screen_dir.x, 0, screen_dir.y)
+		push_dir = (world + away * 0.25).normalized()
+
+	# Aerial hits only spike targets that are already in the air
+	var launch: float = move["launch"]
+	if move["name"] == "aerial" and not enemy.launched:
+		launch = 0.0
+
+	NetSync.hit_creature(enemy, amount, global_position, push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
 
 	if crit:
 		FloatingText.spawn(get_parent(), enemy.global_position + Vector3(0, enemy.height / 2.0 + 5.0, 0), "CRITICAL!", Color(1.0, 0.75, 0.2))
 
 	# A killing blow: the world slows, the page flashes
-	if enemy.health <= 0.0:
+	if killing:
 		var boss = enemy.data.get("boss", false)
 		hit_stop(1.1 if boss else 0.3, 0.2)
 		shake = max(shake, 0.8 if boss else 0.45)
@@ -743,24 +829,22 @@ func strike(enemy: Node3D, move: Dictionary, combo_mult: float):
 		shake = max(shake, 0.15)
 		Pad.rumble(0.35, 0.0, 0.07)
 
-	var away = enemy.global_position - global_position
+
+# A duel hit in the Proving Ring: the other player's machine applies it
+func duel_strike(other: Node3D, move: Dictionary, combo_mult: float):
+
+	var amount = CodexData.calc_damage(get_attack() * move["damage"] * combo_mult * PVP_DAMAGE, other.defense)
+	var away = other.global_position - global_position
 	away.y = 0
 	away = away.normalized() if away.length() > 0.01 else aim_dir
+	NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6)
 
-	var push_dir = away
-	var screen_dir: Vector2 = move["screen_dir"]
-	if screen_dir != Vector2.ZERO:
-		# Screen direction of the attack, a little away from Veyl so the
-		# target isn't shoved back into the swing
-		var world = iso_basis() * Vector3(screen_dir.x, 0, screen_dir.y)
-		push_dir = (world + away * 0.25).normalized()
-
-	# Aerial hits only spike targets that are already in the air
-	var launch: float = move["launch"]
-	if move["name"] == "aerial" and not enemy.launched:
-		launch = 0.0
-
-	enemy.apply_impact(push_dir * move["push"], move["spin"], move["dizzy"], launch, move["side"])
+	var spark_at = other.global_position + Vector3(0, 3.0, 0)
+	HitSpark.spawn(get_parent(), spark_at, away + Vector3.UP * 0.6, Color(1.0, 0.5, 0.15), 14)
+	Sfx.play("hit_heavy", -4.0)
+	hit_stop(0.06)
+	shake = max(shake, 0.2)
+	Pad.rumble(0.4, 0.2, 0.08)
 
 
 # A stick can't point as precisely as a mouse, so swing at the closest
@@ -790,6 +874,13 @@ func aim_assist(attack_range: float):
 # extend the freeze rather than stacking; the slowest requested speed wins.
 # A kill uses a longer, gentler slow-motion (scale ~0.25).
 func hit_stop(duration: float, scale: float = HIT_STOP_SCALE):
+
+	# A shared world can't slow down for one player, so in a session only
+	# this Veyl's pose holds for the moment instead
+	if Net.online:
+		if animator:
+			animator.hold(min(duration, 0.15))
+		return
 
 	var already_stopped = hit_stop_left > 0.0
 	hit_stop_left = max(hit_stop_left, duration)
@@ -836,9 +927,15 @@ func try_dash():
 	dash_cooldown_timer = dash_cooldown
 	Sfx.play("dash", -4.0)
 	invuln_timer = dash_time + 0.05
+	NetSync.share_player_fx("dash")
 
 
 func take_damage(amount: int, from: Vector3):
+
+	# Someone else's Veyl: their machine decides (a dodge there still counts)
+	if remote:
+		NetSync.hurt_player(peer_id, amount, from)
+		return
 
 	if dead or invuln_timer > 0.0:
 		return
@@ -868,12 +965,30 @@ func take_damage(amount: int, from: Vector3):
 	if animator:
 		animator.hurt(from)
 
+	flinch()
+	NetSync.share_player_fx("hurt", [amount, from])
+
+	if health <= 0.0:
+		die()
+
+
+func flinch():
+
 	if sprite:
 		sprite.modulate = Color(1.0, 0.3, 0.3)
 		create_tween().tween_property(sprite, "modulate", Color.WHITE, 0.25)
 
-	if health <= 0.0:
-		die()
+
+# A hit sent over the network (net_sync.gd): a creature on the host's
+# machine, or another player in the Proving Ring
+func take_hit(amount: int, from: Vector3, push: Vector3, attacker: int):
+
+	var before = health
+	if attacker != 0:
+		last_attacker = attacker
+	take_damage(amount, from)
+	if health < before:
+		velocity += push
 
 
 func heal(amount: float):
@@ -895,17 +1010,35 @@ func heal(amount: float):
 func die():
 
 	dead = true
+	fade_out()
+	NetSync.share_player_fx("die")
 
-	if sprite:
-		create_tween().tween_property(sprite, "modulate", Color(0.3, 0.3, 0.3, 0.6), 0.6)
+	var ring = get_tree().get_first_node_in_group("pvp_ring")
+	died_in_ring = ring != null and ring.contains(global_position)
+	if died_in_ring and last_attacker != 0:
+		NetSync.announce("%s bested %s in the Proving Ring." % [Net.name_of(last_attacker), Net.player_name])
+	last_attacker = 0
 
 	died.emit()
 
 
-# Back to the last ember shrine. Quest, inventory and kills are kept.
+func fade_out():
+
+	if sprite:
+		create_tween().tween_property(sprite, "modulate", Color(0.3, 0.3, 0.3, 0.6), 0.6)
+
+
+# Back to the last ember shrine (or the edge of the Proving Ring after a
+# duel). Quest, inventory and kills are kept, and the creatures carry on
+# where they were: they lose interest and wander home on their own.
 func respawn():
 
-	global_position = GameState.checkpoint_position if GameState.checkpoint_position != null else start_position
+	var ring = get_tree().get_first_node_in_group("pvp_ring")
+	if died_in_ring and ring:
+		global_position = ring.spawn_point()
+	else:
+		global_position = GameState.checkpoint_position if GameState.checkpoint_position != null else start_position
+	died_in_ring = false
 	velocity = Vector3.ZERO
 	health = max_health
 	dead = false
@@ -914,9 +1047,9 @@ func respawn():
 	if sprite:
 		sprite.modulate = Color.WHITE
 
-	get_tree().call_group("enemies", "reset")
 	health_changed.emit(health, max_health)
 	respawned.emit()
+	NetSync.share_player_fx("respawn")
 
 
 # ============================================================
@@ -954,3 +1087,105 @@ func _on_boss_disengaged():
 	if zoom_before_boss >= 0.0:
 		current_zoom = zoom_before_boss
 		zoom_before_boss = -1.0
+
+
+# ============================================================
+# NETWORK (this machine's Veyl -> everyone else's copy of it)
+# ============================================================
+
+func grounded() -> bool:
+	return remote_on_floor if remote else is_on_floor()
+
+
+func net_state() -> PackedFloat32Array:
+
+	var flags = (1 if dead else 0) | (2 if is_on_floor() else 0) | (4 if dash_timer > 0.0 else 0)
+	return PackedFloat32Array([
+		global_position.x, global_position.y, global_position.z,
+		velocity.x, velocity.y, velocity.z,
+		aim_dir.x, aim_dir.z, flags, health,
+		dash_dir.x, dash_dir.z,
+	])
+
+
+func apply_net_state(s: PackedFloat32Array):
+
+	if s.size() < 12:
+		return
+	net_pos = Vector3(s[0], s[1], s[2])
+	net_vel = Vector3(s[3], s[4], s[5])
+	net_age = 0.0
+	var aim = Vector3(s[6], 0, s[7])
+	if aim.length() > 0.1:
+		aim_dir = aim.normalized()
+	var flags = int(s[8])
+	dead = flags & 1 != 0
+	remote_on_floor = flags & 2 != 0
+	dash_timer = 0.1 if flags & 4 != 0 else 0.0
+	health = s[9]
+	dash_dir = Vector3(s[10], 0, s[11])
+
+
+# Glide toward where its player has it, a little ahead along its velocity
+func remote_process(delta):
+
+	net_age += delta
+	var target = net_pos + net_vel * min(net_age, 0.12)
+	if global_position.distance_to(target) > NET_SNAP_DIST:
+		global_position = target
+	else:
+		global_position = global_position.lerp(target, 1.0 - exp(-18.0 * delta))
+	velocity = net_vel
+	update_sprite_facing()
+	update_blob_shadow()
+
+
+func add_name_label():
+
+	var label = Label3D.new()
+	label.text = Net.name_of(peer_id)
+	label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	label.no_depth_test = true
+	label.font_size = 40
+	# Veyl is scaled up 5x, so the label is drawn 5x smaller to match
+	label.pixel_size = 0.005
+	label.outline_size = 12
+	label.modulate = Color(1.0, 0.8, 0.55)
+	label.position.y = 1.55
+	add_child(label)
+
+
+# ---- Moments another player's Veyl shows here ----
+
+func fx_swing(kind: String, aim: Vector3):
+
+	if NetSync.near_me(global_position):
+		Sfx.play("attack", -4.0, SWING_PITCH.get(kind, 1.0))
+	if animator:
+		animator.swing(kind, aim)
+	var move = CombatMoves.get_move(kind, kind == "aerial")
+	get_tree().create_timer(IMPACT_DELAY.get(kind, 0.07)).timeout.connect(show_slash.bind(move, aim))
+
+
+func fx_dash():
+
+	if NetSync.near_me(global_position):
+		Sfx.play("dash", -8.0)
+
+
+func fx_hurt(amount: int, from: Vector3):
+
+	FloatingText.spawn(get_parent(), global_position + Vector3(0, 5, 0), str(amount), Color(1.0, 0.3, 0.3))
+	if animator:
+		animator.hurt(from)
+	flinch()
+
+
+func fx_die():
+	fade_out()
+
+
+func fx_respawn():
+
+	if sprite:
+		sprite.modulate = Color.WHITE

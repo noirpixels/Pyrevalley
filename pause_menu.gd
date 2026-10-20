@@ -9,6 +9,10 @@ signal quit_pressed
 
 const UI = preload("res://ui_kit.gd")
 
+# Set by game_ui.gd: no restarting someone else's world, and quitting
+# leaves (or, for the host, ends) the session
+var multiplayer_session: bool = false
+
 
 func _ready():
 
@@ -28,8 +32,12 @@ func _ready():
 	box.add_child(UI.button("INVENTORY", _on_inventory))
 	box.add_child(UI.button("CODEX", _on_codex))
 	box.add_child(UI.button("SAVE GAME", save_pressed.emit))
-	box.add_child(UI.button("RESTART PROTOTYPE", restart_pressed.emit))
-	box.add_child(UI.button("SAVE & QUIT TO MENU", quit_pressed.emit))
+	if multiplayer_session:
+		var leave = "SAVE & END SESSION" if Net.is_host() else "SAVE & LEAVE SESSION"
+		box.add_child(UI.button(leave, quit_pressed.emit))
+	else:
+		box.add_child(UI.button("RESTART PROTOTYPE", restart_pressed.emit))
+		box.add_child(UI.button("SAVE & QUIT TO MENU", quit_pressed.emit))
 
 
 # Swap the pause menu for the chosen screen

@@ -26,6 +26,10 @@ var hint_fade: Tween
 var toasts: VBoxContainer
 var message: Label
 var fade_rect: ColorRect
+# Multiplayer: the other players' health, and how friends can join
+var party: Label
+var session: Label
+var party_timer: float = 0.0
 
 
 func _ready():
@@ -68,6 +72,11 @@ func _ready():
 	buttons = HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_END
 	right.add_child(buttons)
+
+	party = UI.label("", 16)
+	party.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	party.visible = Net.online
+	right.add_child(party)
 	for b in [["Inventory", "inventory", inventory_pressed], ["Codex", "codex", codex_pressed], ["Pause", "pause", pause_pressed]]:
 		var button = Button.new()
 		button.set_meta("label", b[0])
@@ -120,6 +129,19 @@ func _ready():
 	add_child(hint)
 	show_controls()
 	Pad.mode_changed.connect(_on_pad_mode_changed)
+
+	# ---- Session (bottom-right) ----
+	session = UI.label("", 14, UI.MUTED)
+	session.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	session.offset_left = -520
+	session.offset_right = -24
+	session.offset_top = -150
+	session.offset_bottom = -44
+	session.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	session.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+	session.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	session.visible = Net.online
+	add_child(session)
 
 	# ---- Respawn fade + message ----
 	fade_rect = ColorRect.new()
@@ -327,3 +349,38 @@ func fade(alpha: float, duration: float):
 	var tween = create_tween()
 	tween.tween_property(fade_rect, "color:a", alpha, duration)
 	await tween.finished
+
+
+# ============================================================
+# MULTIPLAYER
+# ============================================================
+
+func _process(delta):
+
+	if not Net.online:
+		return
+	party_timer -= delta
+	if party_timer > 0.0:
+		return
+	party_timer = 0.25
+
+	var lines = []
+	for veyl in get_tree().get_nodes_in_group("remote_players"):
+		var bars = 8
+		var filled = int(ceil(clamp(veyl.health / veyl.max_health, 0.0, 1.0) * bars))
+		var bar = "fallen" if veyl.dead else "■".repeat(filled) + "□".repeat(bars - filled)
+		lines.append("%s  %s" % [Net.name_of(veyl.peer_id), bar])
+	party.text = "\n".join(lines)
+
+	var count = "%d / %d players" % [Net.roster.size(), Net.MAX_PLAYERS]
+	if Net.is_host():
+		var text = "Hosting  ·  %s" % count
+		var lan = Net.lan_addresses()
+		if not lan.is_empty():
+			text += "\nSame Wi-Fi: join %s" % ", ".join(lan)
+		if Net.port_status != "":
+			text += "\n" + Net.port_status
+		session.text = text
+	else:
+		session.text = "In %s's world  ·  %s" % [Net.name_of(1), count]
+

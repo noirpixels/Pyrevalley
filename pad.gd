@@ -248,8 +248,8 @@ func controls_hint() -> String:
 # ============================================================
 
 # A pad can't click, so give a menu focus when one is showing and nothing
-# has it. Only while paused or outside the game, so a HUD button never
-# eats a gameplay press.
+# has it. Only while paused, a menu is open, or outside the game, so a HUD
+# button never eats a gameplay press.
 func _process(delta):
 
 	focus_check -= delta
@@ -258,7 +258,8 @@ func _process(delta):
 	focus_check = 0.15
 	if get_viewport().gui_get_focus_owner():
 		return
-	if not get_tree().paused and get_tree().get_first_node_in_group("player"):
+	var player = get_tree().get_first_node_in_group("player")
+	if not get_tree().paused and player and not player.input_blocked:
 		return
 	var button = first_button(get_tree().root)
 	if button:

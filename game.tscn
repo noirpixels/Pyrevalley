@@ -1,10 +1,6 @@
 [gd_scene format=3 uid="uid://bfkktlm46xda2"]
 
-[ext_resource type="Script" uid="uid://cd8y0arwy8d6h" path="res://player_3d.gd" id="1_e2o6t"]
-[ext_resource type="Texture2D" uid="uid://cctoceaktkle8" path="res://Veyl/veylclothed__F.png" id="2_e2o6t"]
 [ext_resource type="Shader" uid="uid://1pix4takf5sp" path="res://game.gdshader" id="4_7jktm"]
-[ext_resource type="Texture2D" uid="uid://chc8qookveeea" path="res://Veyl/veylclothed__B.png" id="4_fc0e3"]
-[ext_resource type="Texture2D" uid="uid://djnwvc5f8eqbw" path="res://Veyl/veylclothed__R.png" id="5_veylr"]
 [ext_resource type="Script" uid="uid://dhjne5kn0q6dl" path="res://emberwood.gd" id="20_ewood"]
 [ext_resource type="Script" uid="uid://ba0orxfu0ckl7" path="res://game_ui.gd" id="21_gameui"]
 [ext_resource type="Script" uid="uid://ldd42wmu3vc5" path="res://ground_textures.gd" id="22_gtex"]
@@ -23,6 +19,7 @@
 [ext_resource type="Texture2D" uid="uid://cwh8ccp2p2pxi" path="res://Textures/Grass/r1.png" id="44_tex"]
 [ext_resource type="Texture2D" uid="uid://tpwrud7cvhqb" path="res://Textures/Grass/m1.png" id="45_tex"]
 [ext_resource type="Script" path="res://arena_seal.gd" id="46_seal"]
+[ext_resource type="PackedScene" path="res://player.tscn" id="50_player"]
 
 [sub_resource type="Environment" id="Environment_fc0e3"]
 background_mode = 1
@@ -40,11 +37,6 @@ fog_density = 0.0025
 adjustment_enabled = true
 adjustment_contrast = 1.08
 adjustment_saturation = 1.08
-
-[sub_resource type="CylinderShape3D" id="CylinderShape3D_feb5d"]
-height = 1.8852539
-
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_fc0e3"]
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_fc0e3"]
 render_priority = 0
@@ -73,48 +65,8 @@ shadow_blur = 1.5
 directional_shadow_mode = 1
 directional_shadow_max_distance = 180.0
 
-[node name="Player3D" type="CharacterBody3D" parent="." unique_id=2007522325]
+[node name="Player3D" parent="." unique_id=2007522325 instance=ExtResource("50_player")]
 transform = Transform3D(-5, 0, 4.371139e-07, 0, 5, 0, -4.371139e-07, 0, -5, 0, 5.905036, 0)
-script = ExtResource("1_e2o6t")
-texture_front = ExtResource("2_e2o6t")
-texture_back = ExtResource("4_fc0e3")
-texture_right = ExtResource("5_veylr")
-
-[node name="VeylViewport" type="SubViewport" parent="Player3D" unique_id=1106642484]
-
-[node name="Node2D" type="Node2D" parent="Player3D/VeylViewport" unique_id=1850358091]
-
-[node name="Sprite2D" type="Sprite2D" parent="Player3D/VeylViewport/Node2D" unique_id=44010566]
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Player3D" unique_id=1596738359]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0054485323, -0.033935547, 0)
-shape = SubResource("CylinderShape3D_feb5d")
-
-[node name="CameraBoom" type="Node3D" parent="Player3D" unique_id=923276193]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.0073806047, 0.35753393)
-
-[node name="SpringArm3D" type="SpringArm3D" parent="Player3D/CameraBoom" unique_id=1943429009]
-shape = SubResource("CapsuleShape3D_fc0e3")
-spring_length = 4.5
-
-[node name="MainGameCamera" type="Camera3D" parent="Player3D/CameraBoom/SpringArm3D" unique_id=428409534]
-transform = Transform3D(0.2, 0, 0, 0, 0.2, 0, 0, 0, 0.2, 0, 0, 0)
-visible = false
-projection = 1
-current = true
-size = 8.0
-
-[node name="CharacterSprite" type="Sprite3D" parent="Player3D" unique_id=884682826]
-transform = Transform3D(0.75, 0, 0, 0, 0.75, 0, 0, 0, 0.75, -0.0054485323, 0, 0)
-shaded = true
-texture_filter = 0
-
-[node name="OmniLight3D" type="OmniLight3D" parent="Player3D" unique_id=1492664389]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.84982896, 0)
-light_color = Color(0.609717, 0.2835663, 2.8878452e-07, 1)
-light_energy = 4.892
-light_indirect_energy = 16.0
-light_size = 1.0
 
 [node name="Emberwood" type="Node3D" parent="." unique_id=505096572]
 transform = Transform3D(0.7071068, 0, 0.7071068, 0, 1, 0, -0.7071068, 0, 0.7071068, -74.24621, 0, -74.24621)

@@ -12,6 +12,8 @@ extends "res://enemy.gd"
 # Every attack is drawn on the ground first (telegraph.gd) and lands when
 # the warning fills. It rises with a title card the first time Veyl
 # faces it, and at half health it roars, throws Veyl back and catches fire.
+# With several players it fights whoever is nearest inside its arena, and
+# its slam, charge and eruptions hit every Veyl they reach.
 
 const EmberWall = preload("res://ember_wall.gd")
 const InkPost = preload("res://ink_post.gd")
@@ -35,7 +37,8 @@ const ERUPTION_DELAY = 1.0
 
 var attack_kind: String = "slam"
 var charge_dir: Vector3 = Vector3.ZERO
-var charge_hit: bool = false
+# Veyls this charge has already hit
+var charge_hits: Array = []
 var enraged: bool = false
 var queued_slam: bool = false
 var followup: bool = false
@@ -88,19 +91,39 @@ func enter_state(new_state: State):
 	if new_state == State.DETECTED and not introduced:
 		introduced = true
 		state_timer = INTRO_TIME
-		Sfx.play("boss_roar")
-		get_tree().call_group("game_ui", "boss_intro", data["name"], "Chained heart of Emberwood")
-		if player:
-			player.shake = max(player.shake, 0.5)
+		fx("intro")
 
 	if new_state == State.CHASE and not engaged:
 		engaged = true
-		GameState.boss_fight = true
-		GameState.boss_engaged.emit(self)
+		fx("engage", [true])
 	elif new_state == State.IDLE and engaged:
 		engaged = false
-		GameState.boss_fight = false
+		fx("engage", [false])
+
+
+func fx_intro():
+
+	fx_sound("boss_roar")
+	get_tree().call_group("game_ui", "boss_intro", data["name"], "Chained heart of Emberwood")
+	shake_nearby(0.5)
+
+
+# Seals the arena, starts the music and shows the health bar, everywhere
+func fx_engage(on: bool):
+
+	GameState.boss_fight = on
+	if on:
+		GameState.boss_engaged.emit(self)
+	else:
 		GameState.boss_disengaged.emit()
+
+
+# Shakes this player's view if their Veyl is close enough to feel it
+func shake_nearby(amount: float):
+
+	var me = NetSync.local_player()
+	if me and flat(me.global_position - global_position).length() < SLAM_RADIUS * 3.0:
+		me.shake = max(me.shake, amount)
 
 
 # ============================================================
@@ -108,7 +131,11 @@ func enter_state(new_state: State):
 # ============================================================
 
 func player_in_territory() -> bool:
-	return flat(player.global_position - home).length() <= leash_range + TERRITORY_MARGIN
+	return can_hunt(player)
+
+
+func can_hunt(veyl: Node3D) -> bool:
+	return flat(veyl.global_position - home).length() <= leash_range + TERRITORY_MARGIN
 
 
 func can_detect(dist: float) -> bool:
@@ -173,30 +200,30 @@ func begin_attack():
 		windup = 0.55
 	windup_time = windup * (0.85 if enraged else 1.0)
 	state_timer = windup_time
-	charge_hit = false
+	charge_hits = []
 
 	clear_tele(true)
 	match attack_kind:
 		"slam":
-			tele = Telegraph.circle(get_parent(), ground_point(global_position), SLAM_RADIUS, windup_time)
+			fx("circle", [ground_point(global_position), SLAM_RADIUS, windup_time])
 		"charge":
 			charge_dir = flat(player.global_position - global_position).normalized()
 			var length = CHARGE_SPEED * (1.2 if enraged else 1.0) * CHARGE_TIME + radius
-			tele = Telegraph.lane(get_parent(), ground_point(global_position), charge_dir, length, radius * 2.0, windup_time)
+			fx("lane", [ground_point(global_position), charge_dir, length, radius * 2.0, windup_time])
 		"eruption":
 			start_eruption()
 
 
-func perform_attack(dist: float):
+func perform_attack(_dist: float):
 
-	Sfx.play("boss_attack")
+	fx("sound", ["boss_attack"])
 
 	if attack_kind == "slam":
 		clear_tele(false)
-		slam_effects()
-		if dist <= SLAM_RADIUS + PLAYER_RADIUS and not player.dead:
-			player.take_damage(
-				CodexData.calc_damage(data["attack"], player.defense),
+		fx("slam")
+		for veyl in players_within(global_position, SLAM_RADIUS + PLAYER_RADIUS):
+			veyl.take_damage(
+				CodexData.calc_damage(data["attack"], veyl.defense),
 				global_position
 			)
 		if enraged and not followup:
@@ -212,17 +239,17 @@ func ground_point(at: Vector3) -> Vector3:
 
 
 # Ash thrown up all round the ring, and the page shakes
-func slam_effects():
+func fx_slam():
 
 	sprite_scale = Vector2(1.25, 0.75)
 	for i in 10:
 		var angle = TAU * i / 10.0
 		var at = ground_point(global_position) + Vector3(cos(angle), 0, sin(angle)) * SLAM_RADIUS * 0.85
 		AshBurst.spawn(get_parent(), at, 0.6)
-	if player:
-		player.shake = max(player.shake, 0.55)
-	InkPost.flash(get_tree(), Color(1.0, 0.6, 0.3), 0.18)
-	Pad.rumble(0.5, 0.8, 0.25)
+	if NetSync.near_me(global_position):
+		shake_nearby(0.55)
+		InkPost.flash(get_tree(), Color(1.0, 0.6, 0.3), 0.18)
+		Pad.rumble(0.5, 0.8, 0.25)
 
 
 func attack_movement() -> Vector3:
@@ -236,13 +263,13 @@ func attack_movement() -> Vector3:
 
 	face(charge_dir)
 
-	var dist = flat(player.global_position - global_position).length()
-	if not charge_hit and dist < radius + PLAYER_RADIUS + 1.0 and not player.dead:
-		charge_hit = true
-		player.take_damage(
-			CodexData.calc_damage(data["attack"] * 1.2, player.defense),
-			global_position
-		)
+	for veyl in players_within(global_position, radius + PLAYER_RADIUS + 1.0):
+		if not veyl in charge_hits:
+			charge_hits.append(veyl)
+			veyl.take_damage(
+				CodexData.calc_damage(data["attack"] * 1.2, veyl.defense),
+				global_position
+			)
 
 	return charge_dir * CHARGE_SPEED * (1.2 if enraged else 1.0)
 
@@ -266,28 +293,39 @@ func start_eruption():
 func spawn_eruption(where: Vector3):
 
 	var delay = ERUPTION_DELAY * (0.9 if enraged else 1.0)
+	fx("eruption", [where, delay])
+	get_tree().create_timer(delay, false).timeout.connect(erupt.bind(where))
+
+
+# The warning circle, then a pillar of fire that burns out
+func fx_eruption(where: Vector3, delay: float):
+
 	var circle = Telegraph.circle(get_parent(), where, ERUPTION_RADIUS, delay)
-	get_tree().create_timer(delay, false).timeout.connect(erupt.bind(where, circle))
+	get_tree().create_timer(delay, false).timeout.connect(fx_erupt.bind(where, circle))
 
 
-func erupt(where: Vector3, circle: Node):
+func fx_erupt(where: Vector3, circle: Node):
 
 	if is_instance_valid(circle):
 		circle.burst()
 	if state == State.DEAD or not is_inside_tree():
 		return
 
-	# A pillar of fire that burns out
 	var pillar = EmberWall.new(ERUPTION_RADIUS * 1.4, 7.0, true)
 	get_parent().add_child(pillar)
 	pillar.global_position = where
 	pillar.fade_to(0.0, 0.7).tween_callback(pillar.queue_free)
 	AshBurst.spawn(get_parent(), where, 0.5)
+	fx_sound("eruption", -2.0, randf_range(0.9, 1.1))
 
-	Sfx.play("eruption", -2.0, randf_range(0.9, 1.1))
-	if player and not player.dead and flat(player.global_position - where).length() <= ERUPTION_RADIUS + 1.0:
-		player.take_damage(
-			CodexData.calc_damage(data["attack"] * 0.8, player.defense),
+
+func erupt(where: Vector3):
+
+	if state == State.DEAD or not is_inside_tree():
+		return
+	for veyl in players_within(where, ERUPTION_RADIUS + 1.0):
+		veyl.take_damage(
+			CodexData.calc_damage(data["attack"] * 0.8, veyl.defense),
 			where
 		)
 
@@ -313,28 +351,37 @@ func phase_shift():
 
 	enraged = true
 	move_speed *= 1.2
-	glow_strength = 1.8
 	phase_shift_left = PHASE_SHIFT_TIME
 	clear_tele(true)
 	queued_slam = false
 	enter_state(State.HURT)
 	state_timer = PHASE_SHIFT_TIME
-	sprite_scale = Vector2(0.85, 1.25)
-
-	Sfx.play("boss_roar", 2.0, 0.85)
-	Sfx.play_music("boss2")
-	GameState.notify.emit("The Ashbound burns brighter!")
-	InkPost.flash(get_tree(), Color(1.0, 0.5, 0.2), 0.55)
-	Pad.rumble(0.8, 1.0, 0.6)
-	if player:
-		player.shake = max(player.shake, 0.9)
-		var away = flat(player.global_position - global_position)
-		if away.length() < SLAM_RADIUS * 1.5:
-			player.velocity += away.normalized() * PHASE_SHIFT_PUSH + Vector3.UP * 8.0
+	fx("phase_shift")
 
 	for i in 8:
 		var angle = TAU * i / 8.0
 		spawn_eruption(ground_point(global_position) + Vector3(cos(angle), 0, sin(angle)) * SLAM_RADIUS * 1.25)
+
+
+# Each player's own Veyl is thrown back on their own machine
+func fx_phase_shift():
+
+	enraged = true
+	glow_strength = 1.8
+	sprite_scale = Vector2(0.85, 1.25)
+
+	fx_sound("boss_roar", 2.0, 0.85)
+	Sfx.play_music("boss2")
+	GameState.notify.emit("The Ashbound burns brighter!")
+	if not NetSync.near_me(global_position):
+		return
+	InkPost.flash(get_tree(), Color(1.0, 0.5, 0.2), 0.55)
+	Pad.rumble(0.8, 1.0, 0.6)
+	shake_nearby(0.9)
+	var me = NetSync.local_player()
+	var away = flat(me.global_position - global_position) if me else Vector3.ZERO
+	if me and not me.dead and away.length() < SLAM_RADIUS * 1.5:
+		me.velocity += away.normalized() * PHASE_SHIFT_PUSH + Vector3.UP * 8.0
 
 
 func _physics_process(delta):
@@ -345,26 +392,22 @@ func _physics_process(delta):
 
 func die():
 
-	GameState.boss_fight = false
-	GameState.boss_disengaged.emit()
+	fx("engage", [false])
 	super()
-	Sfx.play("boss_death")
+	GameState.defeat_boss()
+
+
+func fx_die():
+
+	super()
+	fx_sound("boss_death")
 	# It comes apart in waves
 	for i in 5:
 		var at = global_position + Vector3(randf_range(-3, 3), randf_range(-2, 4), randf_range(-3, 3))
 		get_tree().create_timer(0.15 * i).timeout.connect(AshBurst.spawn.bind(get_parent(), at, 1.6))
-	GameState.defeat_boss()
 
 
 # Leaving the level mid-fight (quit to menu) must not leave shrines cold
 func _exit_tree():
-	if engaged:
+	if GameState.boss_fight:
 		GameState.boss_fight = false
-
-
-func reset():
-
-	super()
-	queued_slam = false
-	followup = false
-	phase_shift_left = 0.0

@@ -7,6 +7,7 @@ extends Node3D
 
 const InkPost = preload("res://ink_post.gd")
 const WorldDressing = preload("res://world_dressing.gd")
+const PvpRing = preload("res://pvp_ring.gd")
 # How close to Rowan's fire his theme takes over
 const CAMP_RADIUS = 26.0
 
@@ -43,6 +44,10 @@ func _ready():
 	build_embers()
 	add_child(InkPost.new())
 	add_child(WorldDressing.new())
+	if Net.online:
+		add_child(PvpRing.new())
+	# Spawners and placed pickups are ready now; start (or join) the session
+	NetSync.enter_world.call_deferred(get_parent())
 	update_signs()
 	Pad.mode_changed.connect(update_signs)
 	Sfx.play_ambience("forest")

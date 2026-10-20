@@ -3,6 +3,8 @@ extends CanvasLayer
 # Owns every in-game screen and decides when the game is paused.
 # Actions (pad.gd): pause (Esc / +) pause or close, inventory (I / -),
 # codex (C / L), and a pad's back button closes the open screen.
+# In a multiplayer session nothing pauses: screens open over the running
+# game and only stop your own Veyl from moving.
 
 const Hud = preload("res://hud.gd")
 const DialogueBox = preload("res://dialogue_box.gd")
@@ -44,6 +46,7 @@ func _ready():
 	inventory.closed.connect(update_paused)
 
 	pause_menu = PauseMenu.new()
+	pause_menu.multiplayer_session = Net.online
 	add_child(pause_menu)
 	pause_menu.resume_pressed.connect(toggle_pause)
 	pause_menu.inventory_pressed.connect(toggle_inventory)
@@ -57,6 +60,7 @@ func _ready():
 	codex.closed.connect(update_paused)
 
 	ending = EndingScreen.new()
+	ending.multiplayer_session = Net.online
 	add_child(ending)
 	ending.play_again_pressed.connect(restart)
 	ending.menu_pressed.connect(quit_to_menu)
@@ -100,7 +104,8 @@ func _input(event):
 func update_paused():
 
 	var paused = dialogue.visible or inventory.visible or pause_menu.visible or codex.visible or ending.visible
-	get_tree().paused = paused
+	get_tree().paused = paused and not Net.online
+	player.input_blocked = paused
 	# Let pad.gd hand focus to whichever screen is now on top
 	get_viewport().gui_release_focus()
 	hud.set_buttons_visible(not paused)
@@ -165,6 +170,9 @@ func quit_to_menu():
 	if not GameState.boss_defeated:
 		GameState.save_game(player)
 	GameState.loaded = false
+	if Net.online:
+		Net.leave()
+		return
 	get_tree().paused = false
 	Sfx.stop_music()
 	Sfx.stop_ambience()

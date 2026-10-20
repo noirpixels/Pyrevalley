@@ -8,6 +8,9 @@ signal menu_pressed
 
 const UI = preload("res://ui_kit.gd")
 
+# Set by game_ui.gd: a shared world can't be restarted from here
+var multiplayer_session: bool = false
+
 var bg: ColorRect
 var quiet: Label
 var final: VBoxContainer
@@ -47,7 +50,8 @@ func _ready():
 	spacer.custom_minimum_size = Vector2(0, 24)
 	final.add_child(spacer)
 
-	final.add_child(UI.button("PLAY AGAIN", play_again_pressed.emit))
+	if not multiplayer_session:
+		final.add_child(UI.button("PLAY AGAIN", play_again_pressed.emit))
 	final.add_child(UI.button("RETURN TO MENU", menu_pressed.emit))
 
 

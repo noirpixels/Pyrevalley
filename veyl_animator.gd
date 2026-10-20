@@ -23,6 +23,9 @@ var time: float = 0.0
 var step_phase: float = 0.0
 var was_on_floor: bool = true
 var ghost_timer: float = 0.0
+# Seconds the pose is held still: hit-stop in a multiplayer session, where
+# the game can't slow down for one player (player_3d.gd hit_stop)
+var hold_left: float = 0.0
 var fall_side: float = 1.0
 
 # Current pose (lift and shift are world units: up, and right on screen)
@@ -60,13 +63,17 @@ func _init(body: CharacterBody3D, body_sprite: Sprite3D):
 
 func _process(delta):
 
+	if hold_left > 0.0:
+		hold_left -= delta
+		return
+
 	time += delta
 	ghost_timer = max(ghost_timer - delta, 0.0)
 
 	var flat_vel = Vector3(player.velocity.x, 0, player.velocity.z)
 	var speed = flat_vel.length()
 	var moving_x = SpritePose.screen_x(sprite, flat_vel) / player.speed
-	var on_floor = player.is_on_floor()
+	var on_floor = player.grounded()
 
 	var target_lean = 0.0
 	var target_squash = Vector2.ONE
@@ -123,6 +130,10 @@ func _process(delta):
 	SpritePose.apply(sprite, lean, squash, base_scale)
 	var offset_world = Vector3.UP * lift + screen_right() * shift
 	sprite.position = feet + player.global_basis.inverse() * offset_world
+
+
+func hold(duration: float):
+	hold_left = max(hold_left, duration)
 
 
 # Called by the player as each move swings. The puppet swings the sword;

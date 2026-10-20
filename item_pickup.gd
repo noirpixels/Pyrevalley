@@ -1,7 +1,10 @@
 extends Node3D
 
-# A resource on the ground. Creature drops are created in code; pickups
-# placed in the level get a pickup_id so they stay collected after saving.
+# A resource on the ground. Creature drops are created in code (net_sync.gd
+# drop); pickups placed in the level get a pickup_id so they stay collected
+# after saving. With several players, the first to reach it gets it: the
+# host decides, then it's collect()ed by the winner and vanish()es for
+# everyone else.
 
 const FloatingText = preload("res://floating_text.gd")
 
@@ -17,6 +20,8 @@ const ITEM_COLORS = {
 @export var item_name: String = "Moss Fiber"
 @export var amount: int = 1
 @export var pickup_id: String = ""
+# Set on creature drops so every machine can name the same one
+var drop_id: String = ""
 
 var age: float = 0.0
 var gem: MeshInstance3D
@@ -29,6 +34,9 @@ func _ready():
 		if pickup_id in GameState.collected_pickups:
 			queue_free()
 			return
+
+	add_to_group("pickups")
+	NetSync.register_pickup(self)
 
 	var color = ITEM_COLORS.get(item_name, Color.WHITE)
 
@@ -72,14 +80,29 @@ func _process(delta):
 		global_position += offset.normalized() * 10.0 * delta
 
 	if offset.length() < PICKUP_RANGE:
-		collect()
+		NetSync.claim(self)
+
+
+func net_id() -> String:
+	return pickup_id if pickup_id != "" else drop_id
+
+
+func kind() -> String:
+	return "item"
+
+
+func _exit_tree():
+	NetSync.unregister_pickup(self)
+
+
+# Someone else got there first
+func vanish():
+	queue_free()
 
 
 func collect():
 
 	GameState.add_item(item_name, amount)
-	if pickup_id != "":
-		GameState.collected_pickups.append(pickup_id)
 
 	Sfx.play("pickup")
 	FloatingText.spawn(

@@ -10,6 +10,10 @@ extends CharacterBody3D
 # Veyl's directional hits also push, spin, launch and daze it; that runs
 # on its own meters, separate from health (see IMPACT below).
 # Spawned by creature_spawner.gd; call setup() before adding to the tree.
+# It goes after the nearest Veyl still standing. Only the host (or a solo
+# game) runs the behaviour; every sight and sound goes through fx() so
+# guests see it too, and a guest's copy is a puppet that follows the
+# host's snapshots (net_state / apply_net_state).
 
 signal died(enemy)
 signal health_changed(current, maximum)
@@ -17,8 +21,6 @@ signal health_changed(current, maximum)
 enum State { IDLE, DETECTED, CHASE, ATTACK, HURT, DIZZY, DEAD }
 
 const FloatingText = preload("res://floating_text.gd")
-const ItemPickup = preload("res://item_pickup.gd")
-const EmberPickup = preload("res://ember_pickup.gd")
 const SpritePose = preload("res://sprite_pose.gd")
 const InkSprite = preload("res://ink_sprite.gd")
 const Telegraph = preload("res://telegraph.gd")
@@ -55,6 +57,10 @@ const POUNCE_MIN = 6.0
 const POUNCE_MAX = 13.0
 const SPIT_MIN = 7.0
 const SPIT_MAX = 17.0
+# Floats per creature in a network snapshot (net_state)
+const NET_FIELDS = 13
+# A puppet this far from where the host has it jumps there instead of gliding
+const NET_SNAP_DIST = 8.0
 
 # Behaviour tuning (boss.gd overrides some of these)
 var detect_range: float = 18.0
@@ -76,8 +82,15 @@ var launchable: bool = true
 var data: Dictionary
 var kind: String = ""
 var spawner_id: String = ""
+# The Veyl it's after (any player's)
 var player: Node3D
 var home: Vector3
+# A guest's copy, moved by the host
+var puppet: bool = false
+var net_pos: Vector3
+var net_vel: Vector3 = Vector3.ZERO
+var net_age: float = 0.0
+var has_net_state: bool = false
 
 var state: State = State.IDLE
 var state_timer: float = 0.0
@@ -169,6 +182,13 @@ func setup(creature: Dictionary, id: String = ""):
 	body_texture = InkSprite.ink(load(creature["sprite"]))
 	radius = 1.4 * creature["size"]
 	height = body_texture.get_height() * SPRITE_PIXEL_SIZE * 0.9
+
+
+# Tougher when more players are in the session
+func scale_health(mult: float):
+
+	max_health *= mult
+	health = max_health
 
 
 func _ready():
@@ -310,10 +330,13 @@ func _physics_process(delta):
 	if state == State.DEAD:
 		return
 
+	if puppet:
+		puppet_process(delta)
+		return
+
+	pick_target()
 	if player == null:
-		player = get_tree().get_first_node_in_group("player")
-		if player == null:
-			return
+		return
 
 	if not is_on_floor():
 		var g = gravity
@@ -385,6 +408,46 @@ func _physics_process(delta):
 
 	move_and_slide()
 	update_visuals(delta)
+
+
+# The nearest Veyl still standing; with everyone down, the nearest at all,
+# so the chase ends. An attack already under way keeps its target.
+func pick_target():
+
+	if state == State.ATTACK and player and is_instance_valid(player):
+		return
+	player = nearest_player(true)
+	if player == null:
+		player = nearest_player(false)
+
+
+func nearest_player(must_hunt: bool) -> Node3D:
+
+	var best: Node3D = null
+	var best_dist = INF
+	for veyl in NetSync.all_players():
+		if must_hunt and (veyl.dead or not can_hunt(veyl)):
+			continue
+		var dist = flat(veyl.global_position - global_position).length()
+		if dist < best_dist:
+			best = veyl
+			best_dist = dist
+	return best
+
+
+# boss.gd only hunts inside its arena
+func can_hunt(_veyl: Node3D) -> bool:
+	return true
+
+
+# Every Veyl within reach of a point (area attacks hit all of them)
+func players_within(point: Vector3, reach: float) -> Array:
+
+	var hit = []
+	for veyl in NetSync.all_players():
+		if not veyl.dead and flat(veyl.global_position - point).length() <= reach:
+			hit.append(veyl)
+	return hit
 
 
 # Wander near home; walk back and heal up after losing the player
@@ -481,21 +544,21 @@ func begin_attack():
 	var dir = to_player.normalized() if to_player.length() > 0.01 else facing
 	var ground = global_position - Vector3(0, height / 2.0, 0)
 	clear_tele(true)
-	Sfx.play("enemy_windup", -10.0, randf_range(0.9, 1.15))
+	fx("sound", ["enemy_windup", -10.0, randf_range(0.9, 1.15)])
 
 	match move_kind:
 		"bite":
-			tele = Telegraph.lane(get_parent(), ground, dir, attack_reach() + 1.0, radius * 1.8, windup_time)
+			fx("lane", [ground, dir, attack_reach() + 1.0, radius * 1.8, windup_time])
 		"hop":
 			# Locks on where Veyl is now: keep moving and it misses
 			leap_target = flat(player.global_position) + Vector3(0, ground.y, 0)
-			tele = Telegraph.circle(get_parent(), leap_target, HOP_RADIUS, windup_time)
+			fx("circle", [leap_target, HOP_RADIUS, windup_time])
 		"pounce":
 			leap_dir = dir
-			tele = Telegraph.lane(get_parent(), ground, dir, POUNCE_SPEED * POUNCE_TIME + radius, radius * 1.6, windup_time)
+			fx("lane", [ground, dir, POUNCE_SPEED * POUNCE_TIME + radius, radius * 1.6, windup_time])
 		"spit":
 			leap_dir = dir
-			tele = Telegraph.lane(get_parent(), ground, dir, to_player.length() + 2.0, 1.2, windup_time)
+			fx("lane", [ground, dir, to_player.length() + 2.0, 1.2, windup_time])
 
 
 func attack_movement() -> Vector3:
@@ -519,7 +582,7 @@ func perform_attack(dist: float):
 
 	match move_kind:
 		"hop":
-			Sfx.play("enemy_attack", 0.0, 1.2)
+			fx("sound", ["enemy_attack", 0.0, 1.2])
 			var to_target = flat(leap_target - global_position)
 			var air_time = 2.0 * HOP_VELOCITY / gravity
 			leap_dir = to_target.normalized() if to_target.length() > 0.01 else Vector3.ZERO
@@ -529,18 +592,18 @@ func perform_attack(dist: float):
 			hop_time = 0.0
 			state_timer = air_time + recover_time
 		"pounce":
-			Sfx.play("enemy_attack", 0.0, 0.85)
+			fx("sound", ["enemy_attack", 0.0, 0.85])
 			pounce_left = POUNCE_TIME
 			pounce_hit = false
 			state_timer = POUNCE_TIME + recover_time
 			clear_tele(false)
 		"spit":
-			Sfx.play("spit")
+			fx("sound", ["spit"])
 			var mouth = global_position + facing * radius + Vector3(0, height * 0.1, 0)
-			EmberBolt.spawn(get_parent(), mouth, leap_dir, CodexData.calc_damage(data["attack"] * 0.8, player.defense))
+			fx("bolt", [mouth, leap_dir, CodexData.calc_damage(data["attack"] * 0.8, player.defense)])
 			clear_tele(false)
 		_:
-			Sfx.play("enemy_attack")
+			fx("sound", ["enemy_attack"])
 			clear_tele(false)
 			if dist <= attack_reach() + 1.0 and not player.dead:
 				player.take_damage(
@@ -553,22 +616,17 @@ func perform_attack(dist: float):
 func land_hop():
 
 	hopping = false
-	sprite_scale = Vector2(1.35, 0.65)
-	Sfx.play("enemy_land", -2.0)
 	clear_tele(false)
-	AshBurst.spawn(get_parent(), global_position - Vector3(0, height / 2.0, 0), 0.4)
-	if flat(player.global_position - global_position).length() <= HOP_RADIUS + 1.0 and not player.dead:
-		player.take_damage(CodexData.calc_damage(data["attack"] * 1.1, player.defense), global_position)
+	fx("land")
+	for veyl in players_within(global_position, HOP_RADIUS + 1.0):
+		veyl.take_damage(CodexData.calc_damage(data["attack"] * 1.1, veyl.defense), global_position)
 
 
 # cancelled: the attack never happened (fade); otherwise it just landed (flash)
 func clear_tele(cancelled: bool):
 
 	if tele and is_instance_valid(tele):
-		if cancelled:
-			tele.cancel()
-		else:
-			tele.burst()
+		fx("clear_tele", [cancelled])
 	tele = null
 
 
@@ -582,25 +640,14 @@ func take_damage(amount: int, from: Vector3):
 		return
 
 	health -= amount
-	flash_timer = 0.12
 	health_changed.emit(max(health, 0.0), max_health)
-	Sfx.play("hit")
 
 	# Heavier creatures get pushed less
 	var push = flat(global_position - from)
 	if push.length() > 0.01:
 		knockback = push.normalized() * 9.0 / data["size"]
-		# The top snaps the way it's pushed
-		recoil = -SpritePose.screen_x(sprite, push.normalized()) * 0.3
 
-	FloatingText.spawn(
-		get_parent(),
-		global_position + Vector3(0, height / 2.0 + 2.5, 0),
-		str(amount),
-		Color.WHITE
-	)
-
-	update_label()
+	fx("hurt", [amount, from])
 
 	if health <= 0.0:
 		die()
@@ -608,6 +655,17 @@ func take_damage(amount: int, from: Vector3):
 		pass
 	elif staggerable or state == State.IDLE or state == State.DETECTED:
 		enter_state(State.HURT)
+
+
+# A Veyl's blade connected (net_sync.gd sends guests' hits here)
+func receive_hit(amount: int, from: Vector3, push: Vector3, spin: float, dizzy_gain: float, launch: float, side: int):
+
+	take_damage(amount, from)
+	apply_impact(push, spin, dizzy_gain, launch, side)
+
+
+func dead_already() -> bool:
+	return state == State.DEAD
 
 
 # ============================================================
@@ -656,12 +714,7 @@ func become_dizzy():
 	dizzy = 0.0
 	dizzy_immunity = dizzy_time + DIZZY_IMMUNITY
 	enter_state(State.DIZZY)
-	FloatingText.spawn(
-		get_parent(),
-		global_position + Vector3(0, height / 2.0 + 4.0, 0),
-		"DIZZY",
-		Color(1.0, 0.95, 0.4)
-	)
+	fx("dizzy")
 
 
 func is_dizzy() -> bool:
@@ -694,6 +747,114 @@ func update_impact(delta):
 
 func die():
 
+	clear_tele(true)
+	GameState.record_creature_defeat(data["name"])
+	drop_loot()
+	fx("die")
+	died.emit(self)
+
+
+func drop_loot():
+
+	var ground = Vector3(global_position.x, 0, global_position.z)
+
+	if data.get("drop", "") != "":
+		NetSync.drop("item", data["drop"], ground + Vector3(1.0, 0, 0))
+
+	if randf() < ember_drop_chance:
+		NetSync.drop("ember", "", ground + Vector3(-1.0, 0, 0))
+
+
+# ============================================================
+# MOMENTS (seen and heard on every machine in a session)
+# ============================================================
+
+# Plays a sight or sound here and, when hosting, on every guest's copy
+func fx(moment: String, args: Array = []):
+
+	callv("fx_" + moment, args)
+	NetSync.creature_fx(self, moment, args)
+
+
+# Only fights near your own Veyl are heard
+func fx_sound(sound: String, volume_db: float = 0.0, pitch: float = 1.0):
+
+	if NetSync.near_me(global_position):
+		Sfx.play(sound, volume_db, pitch)
+
+
+func fx_lane(from: Vector3, dir: Vector3, length: float, width: float, windup: float):
+
+	fx_clear_tele(true)
+	tele = Telegraph.lane(get_parent(), from, dir, length, width, windup)
+
+
+func fx_circle(centre: Vector3, reach: float, windup: float):
+
+	fx_clear_tele(true)
+	tele = Telegraph.circle(get_parent(), centre, reach, windup)
+
+
+func fx_clear_tele(cancelled: bool):
+
+	if tele and is_instance_valid(tele):
+		if cancelled:
+			tele.cancel()
+		else:
+			tele.burst()
+	tele = null
+
+
+# A guest's bolt is only for show; the host's one does the burning
+func fx_bolt(from: Vector3, dir: Vector3, amount: int):
+
+	EmberBolt.spawn(get_parent(), from, dir, 0 if puppet else amount)
+
+
+func fx_land():
+
+	sprite_scale = Vector2(1.35, 0.65)
+	fx_sound("enemy_land", -2.0)
+	AshBurst.spawn(get_parent(), global_position - Vector3(0, height / 2.0, 0), 0.4)
+
+
+func fx_hurt(amount: int, from: Vector3):
+
+	flash_timer = 0.12
+	fx_sound("hit")
+
+	# The top snaps the way it's pushed
+	var push = flat(global_position - from)
+	if push.length() > 0.01:
+		recoil = -SpritePose.screen_x(sprite, push.normalized()) * 0.3
+
+	FloatingText.spawn(
+		get_parent(),
+		global_position + Vector3(0, height / 2.0 + 2.5, 0),
+		str(amount),
+		Color.WHITE
+	)
+
+	# Don't wait for the next snapshot to drop the bar
+	if puppet:
+		health = max(health - amount, 0.0)
+		health_changed.emit(health, max_health)
+	update_label()
+
+
+func fx_dizzy():
+
+	FloatingText.spawn(
+		get_parent(),
+		global_position + Vector3(0, height / 2.0 + 4.0, 0),
+		"DIZZY",
+		Color(1.0, 0.95, 0.4)
+	)
+
+
+# Crumble into ash
+func fx_die():
+
 	state = State.DEAD
 	dizzy_label.visible = false
 	remove_from_group("enemies")
@@ -701,14 +862,9 @@ func die():
 	label.visible = false
 	set_collision_layer(0)
 	set_collision_mask(0)
-	Sfx.play("enemy_death")
+	fx_sound("enemy_death")
+	fx_clear_tele(true)
 
-	GameState.record_creature_defeat(spawner_id, data["name"])
-	drop_loot()
-	died.emit(self)
-
-	# Crumble into ash
-	clear_tele(true)
 	AshBurst.spawn(get_parent(), global_position, clamp(data["size"], 0.6, 3.0))
 	var tween = create_tween().set_parallel()
 	tween.tween_property(sprite, "scale", Vector3(1.3, 0.1, 1.0), 0.4)
@@ -718,46 +874,72 @@ func die():
 		tween.tween_property(glow_sprite, "modulate:a", 0.0, 0.25)
 	tween.chain().tween_callback(queue_free)
 
-
-func drop_loot():
-
-	var world = get_parent()
-	var ground = Vector3(global_position.x, 0, global_position.z)
-
-	if data.get("drop", "") != "":
-		var item = ItemPickup.new()
-		item.item_name = data["drop"]
-		world.add_child(item)
-		item.global_position = ground + Vector3(1.0, 0, 0)
-
-	if randf() < ember_drop_chance:
-		var ember = EmberPickup.new()
-		ember.player = player
-		world.add_child(ember)
-		ember.global_position = ground + Vector3(-1.0, 0, 0)
+	if puppet:
+		died.emit(self)
 
 
-# Called when the player respawns: survivors forget the fight
-func reset():
+# ============================================================
+# NETWORK (host snapshots -> guest puppets)
+# ============================================================
+
+func net_state() -> PackedFloat32Array:
+
+	var flags = (1 if striking else 0) | (2 if launched else 0)
+	return PackedFloat32Array([
+		global_position.x, global_position.y, global_position.z,
+		velocity.x, velocity.y, velocity.z,
+		atan2(facing.x, facing.z), state, health, flags,
+		state_timer, windup_time, spin_angle,
+	])
+
+
+func apply_net_state(s: PackedFloat32Array, at: int):
 
 	if state == State.DEAD:
 		return
 
-	if regenerates:
-		health = max_health
-	global_position = home
-	returning = false
-	velocity = Vector3.ZERO
-	knockback = Vector3.ZERO
-	dizzy = 0.0
-	dizzy_immunity = 0.0
-	spin_speed = 0.0
-	spin_angle = 0.0
-	launched = false
-	recoil = 0.0
-	enter_state(State.IDLE)
-	health_changed.emit(health, max_health)
-	update_label()
+	net_pos = Vector3(s[at], s[at + 1], s[at + 2])
+	net_vel = Vector3(s[at + 3], s[at + 4], s[at + 5])
+	net_age = 0.0
+	if not has_net_state:
+		has_net_state = true
+		global_position = net_pos
+	facing = Vector3(sin(s[at + 6]), 0, cos(s[at + 6]))
+
+	var new_state = int(s[at + 7]) as State
+	if new_state != state:
+		state = new_state
+		alert_label.visible = state == State.DETECTED
+		dizzy_label.visible = state == State.DIZZY
+
+	if not is_equal_approx(s[at + 8], health):
+		health = s[at + 8]
+		health_changed.emit(max(health, 0.0), max_health)
+		update_label()
+
+	var flags = int(s[at + 9])
+	striking = flags & 1 != 0
+	launched = flags & 2 != 0
+	state_timer = s[at + 10]
+	windup_time = max(s[at + 11], 0.01)
+	spin_angle = s[at + 12]
+
+
+# Glide toward where the host has it, a little ahead along its velocity,
+# so it moves smoothly between snapshots instead of stepping
+func puppet_process(delta):
+
+	net_age += delta
+	state_timer -= delta
+	flash_timer = max(flash_timer - delta, 0.0)
+	if has_net_state:
+		var target = net_pos + net_vel * min(net_age, 0.15)
+		if global_position.distance_to(target) > NET_SNAP_DIST:
+			global_position = target
+		else:
+			global_position = global_position.lerp(target, 1.0 - exp(-15.0 * delta))
+	velocity = net_vel
+	update_visuals(delta)
 
 
 # ============================================================
@@ -774,9 +956,10 @@ func update_visuals(delta):
 
 	anim_time += delta
 
-	# Art faces right; flip when heading left on screen
-	if player and abs(facing.x) + abs(facing.z) > 0.01:
-		var on_screen = player.iso_basis().inverse() * facing
+	# Art faces right; flip when heading left on this player's screen
+	var viewer = NetSync.local_player()
+	if viewer and abs(facing.x) + abs(facing.z) > 0.01:
+		var on_screen = viewer.iso_basis().inverse() * facing
 		if abs(on_screen.x) > 0.15:
 			base_flip = on_screen.x < 0
 

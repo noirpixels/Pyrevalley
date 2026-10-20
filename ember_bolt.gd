@@ -1,7 +1,8 @@
 extends Node3D
 
-# A glob of burning ash spat by an Ashcrawler. Flies straight, burns Veyl
-# on contact (a dash passes through it), and gutters out on the ground.
+# A glob of burning ash spat by an Ashcrawler. Flies straight, burns the
+# first Veyl it touches (a dash passes through it), and gutters out on the
+# ground. A bolt with no damage is a guest's copy, only for show.
 #   EmberBolt.spawn(parent, from, direction, damage)
 
 const SPEED = 15.0
@@ -77,12 +78,14 @@ func _physics_process(delta):
 	age += delta
 	global_position += direction * SPEED * delta
 
-	var player = get_tree().get_first_node_in_group("player")
-	if player and not player.dead:
-		var offset = player.global_position - global_position
+	for veyl in get_tree().get_nodes_in_group("players"):
+		if veyl.dead:
+			continue
+		var offset = veyl.global_position - global_position
 		offset.y = 0
 		if offset.length() < HIT_RADIUS:
-			player.take_damage(damage, global_position - direction)
+			if damage > 0:
+				veyl.take_damage(damage, global_position - direction)
 			fizzle()
 			return
 

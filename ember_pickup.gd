@@ -1,13 +1,16 @@
 extends Node3D
 
 # Glowing ember dropped by defeated creatures. Walk over it to heal.
+# Like item_pickup.gd, the first player to reach it gets it.
 
 const PICKUP_RANGE = 4.0
 const LIFETIME = 15.0
 
 var heal_amount: float = 12.0
-var player: Node3D
 var age: float = 0.0
+var drop_id: String = ""
+# Only placed item pickups have one; kept so both kinds read the same
+var pickup_id: String = ""
 
 @onready var orb: MeshInstance3D = MeshInstance3D.new()
 
@@ -31,6 +34,21 @@ func _ready():
 	light.omni_range = 5.0
 	add_child(light)
 
+	add_to_group("pickups")
+	NetSync.register_pickup(self)
+
+
+func net_id() -> String:
+	return drop_id
+
+
+func kind() -> String:
+	return "ember"
+
+
+func _exit_tree():
+	NetSync.unregister_pickup(self)
+
 
 func _process(delta):
 	age += delta
@@ -43,10 +61,22 @@ func _process(delta):
 		queue_free()
 		return
 
-	if player and not player.dead:
+	var player = get_tree().get_first_node_in_group("player")
+	if player and not player.dead and player.health < player.max_health:
 		var offset = player.global_position - global_position
 		offset.y = 0
 		if offset.length() < PICKUP_RANGE:
-			player.heal(heal_amount)
-			Sfx.play("pickup")
-			queue_free()
+			NetSync.claim(self)
+
+
+func collect():
+
+	var player = get_tree().get_first_node_in_group("player")
+	if player:
+		player.heal(heal_amount)
+	Sfx.play("pickup")
+	queue_free()
+
+
+func vanish():
+	queue_free()
