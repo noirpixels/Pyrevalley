@@ -55,9 +55,10 @@ func _ready():
 
 func open():
 
-	refresh()
 	close_button.text = "CLOSE  [%s]" % Pad.glyph("inventory")
+	# Visible first: refresh skips a hidden panel
 	visible = true
+	refresh()
 
 
 func close():
