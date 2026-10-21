@@ -2,7 +2,7 @@ extends Node
 
 # Every EVERY seconds a blood moon rises over Emberwood: the light turns
 # red for a while, and as it sets the earth closes over every mine
-# (voxel_site.gd host_regrow), so the ore is there to dig again. The host
+# (dig_site.gd host_regrow), so the ore is there to dig again. The host
 # keeps the clock (saved with the world); everyone sees the sky change.
 
 const EVERY = 1200.0
@@ -42,7 +42,7 @@ func _process(delta):
 	if next_in > 0.0:
 		return
 	if active:
-		for site in get_tree().get_nodes_in_group("voxel_sites"):
+		for site in get_tree().get_nodes_in_group("dig_sites"):
 			site.host_regrow()
 		next_in = EVERY
 		NetSync.object_fx(self, "set")

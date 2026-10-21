@@ -1,8 +1,10 @@
 extends Node3D
 
 # Emberwood level root. Children are laid out in this node's local space:
-# local -Z runs "up" the isometric screen, from the Starting Area (z ~ +105)
-# to the Ashbound Arena (z ~ -135).
+# local -Z runs "up" the isometric screen, from the Waking Glade in the south
+# to the Ashbound Arena in the north. Where everything stands comes from
+# this world's seed (world_gen.gd): the story's nodes in game.tscn are moved
+# into place and the forest is planted before any of them is ready.
 # Handles the level bounds, atmosphere and music.
 
 const InkPost = preload("res://ink_post.gd")
@@ -12,26 +14,41 @@ const MiningSites = preload("res://mining_sites.gd")
 const Forage = preload("res://forage.gd")
 const Ruins = preload("res://ruins.gd")
 const BloodMoon = preload("res://blood_moon.gd")
+const WorldGen = preload("res://world_gen.gd")
+const TREE_SCENE = preload("res://tree.tscn")
+const ROCK_SCENE = preload("res://rock.tscn")
 # How close to Rowan's fire his theme takes over
 const CAMP_RADIUS = 26.0
 
 @export var light_path: NodePath = ^"../DirectionalLight3D"
 @export var environment_path: NodePath = ^"../WorldEnvironment"
 
-# Playable bounds in local space
-@export var half_width: float = 40.0
-@export var z_min: float = -168.0
-@export var z_max: float = 125.0
+# Where a new Veyl stands above the ground
+const SPAWN_HEIGHT = 5.9
+# The ground plane's painted paths: pixels per unit
+const MASK_SCALE = 1.0
 
-# Where the forest starts getting darker / is fully dark (local z)
-@export var dark_start_z: float = -10.0
-@export var dark_full_z: float = -100.0
-
+var layout
 var light: DirectionalLight3D
 var environment: Environment
 var embers: CPUParticles3D
 var base_light_energy: float
 var base_ambient_energy: float
+
+
+# Before anything in the level is ready: lay out this world
+func _enter_tree():
+
+	if layout:
+		return
+	GameState.ensure_loaded()
+	layout = WorldGen.new()
+	layout.build(GameState.world_seed)
+	WorldGen.current = layout
+	place_markers()
+	plant_forest()
+	place_player()
+	paint_ground()
 
 
 func _ready():
@@ -45,6 +62,7 @@ func _ready():
 		base_light_energy = light.light_energy
 
 	build_bounds()
+	build_walls()
 	build_embers()
 	add_child(InkPost.new())
 	# Mining sites first: they clear trees and rocks out of their way
@@ -89,7 +107,7 @@ func update_music(local: Vector3):
 	var rowan = get_node_or_null("Rowan")
 	if rowan and Vector2(local.x - rowan.position.x, local.z - rowan.position.z).length() < CAMP_RADIUS:
 		Sfx.play_music("camp")
-	elif local.z < dark_start_z:
+	elif layout.is_deep(local):
 		Sfx.play_music("deep")
 	else:
 		Sfx.play_music("forest")
@@ -103,13 +121,13 @@ func _on_boss_disengaged():
 
 func build_bounds():
 
-	var length = z_max - z_min
-	var center_z = (z_max + z_min) / 2.0
+	var r: Rect2 = WorldGen.BOUNDS
+	var c = r.get_center()
 	var walls = [
-		[Vector3(half_width, 0, center_z), Vector3(1, 40, length)],
-		[Vector3(-half_width, 0, center_z), Vector3(1, 40, length)],
-		[Vector3(0, 0, z_max), Vector3(half_width * 2, 40, 1)],
-		[Vector3(0, 0, z_min), Vector3(half_width * 2, 40, 1)],
+		[Vector3(r.end.x, 0, c.y), Vector3(1, 40, r.size.y)],
+		[Vector3(r.position.x, 0, c.y), Vector3(1, 40, r.size.y)],
+		[Vector3(c.x, 0, r.end.y), Vector3(r.size.x, 40, 1)],
+		[Vector3(c.x, 0, r.position.y), Vector3(r.size.x, 40, 1)],
 	]
 
 	for wall in walls:
@@ -121,6 +139,117 @@ func build_bounds():
 		body.add_child(collision)
 		body.position = wall[0]
 		add_child(body)
+
+
+# The Deep Forest's edge and the arena's ring: unseen walls behind the
+# pines, open only where the gates stand
+func build_walls():
+
+	var body = StaticBody3D.new()
+	body.name = "ForestWalls"
+	for wall in layout.walls:
+		var a: Vector3 = wall[0]
+		var b: Vector3 = wall[1]
+		var shape = BoxShape3D.new()
+		shape.size = Vector3(a.distance_to(b) + 1.0, 40.0, 2.0)
+		var collision = CollisionShape3D.new()
+		collision.shape = shape
+		collision.position = (a + b) / 2.0
+		collision.rotation.y = -atan2(b.z - a.z, b.x - a.x)
+		body.add_child(collision)
+	add_child(body)
+
+
+# ============================================================
+# LAYOUT (world_gen.gd)
+# ============================================================
+
+# The story's nodes (shrines, gates, Rowan, creature spawners...) go where
+# this world put them
+func place_markers():
+
+	for node_path in layout.markers:
+		var node = get_node_or_null(node_path)
+		if node == null:
+			continue
+		var m = layout.markers[node_path]
+		node.position = Vector3(m["pos"].x, node.position.y, m["pos"].z)
+		node.rotation.y = m["yaw"]
+
+
+func plant_forest():
+
+	var trees = get_node("Trees")
+	for i in layout.trees.size():
+		var t = layout.trees[i]
+		var tree = TREE_SCENE.instantiate()
+		tree.name = "Tree%d" % i
+		tree.position = t[0]
+		tree.rotation.y = t[1]
+		tree.scale = Vector3.ONE * t[2]
+		trees.add_child(tree)
+	var rocks = get_node("Rocks")
+	for i in layout.rocks.size():
+		var r = layout.rocks[i]
+		var rock = ROCK_SCENE.instantiate()
+		rock.name = "Rock%d" % i
+		rock.position = r[0]
+		rock.rotation.y = r[1]
+		# Squashed in the mesh only: physics wants the body scaled evenly
+		rock.scale = Vector3.ONE * r[2]
+		rock.get_node("Mesh").scale = Vector3(1.0, 0.8, 1.0)
+		rocks.add_child(rock)
+
+
+# A new Veyl wakes in the glade (a saved one goes back where it was, in
+# player_3d.gd)
+func place_player():
+
+	var player = get_parent().get_node_or_null("Player3D")
+	if player:
+		player.position = transform * layout.spawn + Vector3(0, SPAWN_HEIGHT, 0)
+
+
+# The paths painted into a mask for game.gdshader, and the Deep Forest's
+# edge and the world's bounds for it to darken past
+func paint_ground():
+
+	var ground = get_node_or_null("Ground")
+	if ground == null:
+		return
+	var mat = ground.mesh.material as ShaderMaterial
+	var size: Vector2 = ground.mesh.size
+	var offset_z: float = ground.position.z
+	var w = int(size.x * MASK_SCALE)
+	var h = int(size.y * MASK_SCALE)
+	var data = PackedByteArray()
+	data.resize(w * h)
+	for k in layout.paths.size():
+		var points: PackedVector2Array = layout.paths[k]
+		var width: float = layout.path_widths[k]
+		for i in points.size() - 1:
+			# Into mask pixels: x from the plane's left edge, z from its top
+			var a = (points[i] + Vector2(size.x / 2.0, size.y / 2.0 - offset_z)) * MASK_SCALE
+			var b = (points[i + 1] + Vector2(size.x / 2.0, size.y / 2.0 - offset_z)) * MASK_SCALE
+			var reach = width * MASK_SCALE + 1.0
+			for py in range(maxi(floori(minf(a.y, b.y) - reach), 0), mini(ceili(maxf(a.y, b.y) + reach), h - 1) + 1):
+				for px in range(maxi(floori(minf(a.x, b.x) - reach), 0), mini(ceili(maxf(a.x, b.x) + reach), w - 1) + 1):
+					var at = Vector2(px + 0.5, py + 0.5)
+					var d = Geometry2D.get_closest_point_to_segment(at, a, b).distance_to(at) / MASK_SCALE
+					var v = int(255.0 * (1.0 - smoothstep(width * 0.6, width, d)))
+					var idx = py * w + px
+					if v > data[idx]:
+						data[idx] = v
+	var mask = Image.create_from_data(w, h, false, Image.FORMAT_L8, data)
+	mat.set_shader_parameter("path_mask", ImageTexture.create_from_image(mask))
+	mat.set_shader_parameter("deep_line", layout.deep_line_samples())
+	mat.set_shader_parameter("deep_line_start", WorldGen.DEEP_START)
+	mat.set_shader_parameter("deep_step", WorldGen.DEEP_STEP)
+	mat.set_shader_parameter("deep_span", WorldGen.DEEP_SPAN)
+	mat.set_shader_parameter("deep_strength", 1.0)
+	var r: Rect2 = WorldGen.BOUNDS
+	mat.set_shader_parameter("world_bounds", Vector4(r.position.x, r.position.y, r.end.x, r.end.y))
+	mat.set_shader_parameter("ground_size", size)
 
 
 # Drifting embers around the player
@@ -171,8 +300,7 @@ func _process(_delta):
 	update_music(to_local(player.global_position))
 
 	# Deeper into the forest = darker
-	var local_z = to_local(player.global_position).z
-	var t = clamp(inverse_lerp(dark_start_z, dark_full_z, local_z), 0.0, 1.0)
+	var t = layout.deepness(to_local(player.global_position))
 
 	if light:
 		light.light_energy = lerp(base_light_energy, base_light_energy * 0.35, t)

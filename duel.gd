@@ -86,6 +86,7 @@ func build_world():
 	var ground_mat = ShaderMaterial.new()
 	ground_mat.shader = load("res://game.gdshader")
 	ground_mat.set_shader_parameter("mesh_offset_z", 0.0)
+	ground_mat.set_shader_parameter("ground_size", plane.size)
 	plane.material = ground_mat
 	ground.mesh = plane
 	ground.set_script(load("res://ground_textures.gd"))

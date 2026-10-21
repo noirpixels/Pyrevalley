@@ -17,7 +17,7 @@ const PORT = 24565
 const DISCOVERY_PORT = 24566
 const MAX_PLAYERS = 16
 # Bumped whenever guests and hosts must run the same build to play together
-const PROTOCOL = 1
+const PROTOCOL = 2
 const ANNOUNCE_EVERY = 1.0
 # A LAN game that stops announcing itself drops off the list
 const LAN_TIMEOUT = 3.5
@@ -228,7 +228,7 @@ func register(requested_name: String, protocol: int):
 	roster_changed.emit()
 	if why != "":
 		name_notice.rpc_id(id, "%s You're %s in this game." % [why.replace(" Pick another.", ""), given])
-	welcome_to_session.rpc_id(id)
+	welcome_to_session.rpc_id(id, GameState.world_seed)
 
 
 func unique_name(wanted: String) -> String:
@@ -287,15 +287,17 @@ func sync_roster(data: Dictionary):
 	roster_changed.emit()
 
 
-# Host -> new guest: accepted, load Emberwood. World progress comes from
-# the host; the guest keeps its own inventory, codex and Max Combo in a
-# separate save so their solo world is never touched.
+# Host -> new guest: accepted, load Emberwood. The host's seed builds the
+# same forest here (world_gen.gd), and world progress comes from the host;
+# the guest keeps its own inventory, codex and Max Combo in a separate save
+# so their solo world is never touched.
 @rpc("authority", "call_remote", "reliable")
-func welcome_to_session():
+func welcome_to_session(world_seed: int):
 
 	GameState.use_save(GameState.GUEST_SAVE_PATH)
 	GameState.ensure_loaded()
 	GameState.reset_world()
+	GameState.world_seed = world_seed
 	joined.emit()
 	get_tree().change_scene_to_file(GAME_SCENE)
 

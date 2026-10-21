@@ -74,7 +74,7 @@ const TYPES = {
 # Nothing in hand: Veyl fights with vair fists
 const FISTS = {"attack": 6.0, "range": 4.5, "cooldown": 0.3, "moves": "fists", "type": "Fists", "magic": "", "tier": 0}
 
-# tier: how hard a rock it can break (blocks.gd hardness); attack and
+# tier: how hard a rock it can break (strata.gd hardness); attack and
 # defense multiply the type's numbers; durability is strikes or hits
 const MATERIALS = {
 	"Stone": {"tier": 1, "attack": 0.8, "defense": 0.0, "durability": 60, "scrap": ""},

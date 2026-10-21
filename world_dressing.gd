@@ -1,10 +1,9 @@
 extends Node3D
 
-# Set dressing and atmosphere for Emberwood, scattered from a fixed seed so
-# the forest looks the same every run. Nothing here collides or changes
-# how the level plays. Lives under the Emberwood node, in its local space
-# (-Z runs up the screen, from the Waking Glade at z ~ +110 to the Ashbound
-# Arena at z ~ -138):
+# Set dressing and atmosphere for Emberwood, scattered from the world's seed
+# (world_gen.gd) so the forest looks the same every run. Nothing here
+# collides or changes how the level plays. Lives under the Emberwood node,
+# in its local space:
 #   - ferns, glowing mushrooms, stumps and fallen logs on the forest floor
 #   - bare, burnt trees through the Deep Forest and round the arena
 #   - slanting shafts of low sunlight in the outer forest, ground mist deeper in
@@ -15,15 +14,11 @@ extends Node3D
 const OCCLUDER_SHADER = preload("res://occluder.gdshader")
 const EmberWall = preload("res://ember_wall.gd")
 const Fx = preload("res://fx.gd")
-const MiningSites = preload("res://mining_sites.gd")
+const WorldGen = preload("res://world_gen.gd")
 
-const HALF_WIDTH = 40.0
-const Z_START = 120.0
-const DEEP_Z = -6.0
-const ARENA_Z = -100.0
-const ARENA_CENTRE = Vector3(0, 0, -138)
-const ARENA_RADIUS = 30.0
+const ARENA_RADIUS = WorldGen.ARENA_RADIUS
 
+var layout
 var rng = RandomNumberGenerator.new()
 # Local positions of gameplay things to keep clear of
 var keep_clear: Array[Vector3] = []
@@ -35,7 +30,8 @@ var time: float = 0.0
 
 func _ready():
 
-	rng.seed = 4242
+	layout = WorldGen.current
+	rng.seed = layout.seed_value + 4242
 	collect_keep_clear()
 	scatter_floor()
 	scatter_dead_trees()
@@ -61,7 +57,7 @@ func collect_keep_clear():
 
 func clear_of_gameplay(p: Vector3, margin: float) -> bool:
 
-	if MiningSites.covers(p, margin):
+	if layout.on_site(p, margin):
 		return false
 	for k in keep_clear:
 		if Vector2(p.x - k.x, p.z - k.z).length() < margin:
@@ -69,12 +65,16 @@ func clear_of_gameplay(p: Vector3, margin: float) -> bool:
 	return true
 
 
-func random_point(z_min: float, z_max: float, edge_bias: float = 0.6) -> Vector3:
+# Anywhere in the forest; deep: only the Deep Forest (true) or only the
+# outer forest (false), or either (null)
+func random_point(deep = null) -> Vector3:
 
-	# Pushed toward the sides so the middle of the path stays open
-	var x = rng.randf_range(-1.0, 1.0)
-	x = sign(x) * pow(abs(x), 1.0 - edge_bias * 0.6)
-	return Vector3(x * (HALF_WIDTH - 2.0), 0, rng.randf_range(z_min, z_max))
+	var r: Rect2 = WorldGen.BOUNDS.grow(-2.0)
+	for attempt in 20:
+		var p = Vector3(rng.randf_range(r.position.x, r.end.x), 0, rng.randf_range(r.position.y, r.end.y))
+		if deep == null or layout.is_deep(p) == deep:
+			return p
+	return Vector3(r.get_center().x, 0, r.get_center().y)
 
 
 # ============================================================
@@ -92,27 +92,27 @@ func scatter_floor():
 	var shrooms = []
 	var stumps = []
 	var logs = []
-	for i in 700:
-		var p = random_point(-170.0, Z_START, 0.5)
-		if abs(p.x) < 6.0 and rng.randf() < 0.8:
+	for i in 2400:
+		var p = random_point()
+		if layout.path_distance(p) < 4.0 and rng.randf() < 0.8:
 			continue
 		if in_arena(p) or not clear_of_gameplay(p, 3.5):
 			continue
 		ferns.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.8, 1.6)), p))
-	for i in 140:
-		var p = random_point(-100.0, Z_START, 0.7)
-		if in_arena(p) or not clear_of_gameplay(p, 3.0):
+	for i in 420:
+		var p = random_point()
+		if in_arena(p) or not clear_of_gameplay(p, 3.0) or layout.path_distance(p) < 3.0:
 			continue
 		# Deeper in, more of them glow
 		shrooms.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.7, 1.4)), p))
-	for i in 40:
-		var p = random_point(-100.0, Z_START, 0.9)
-		if not clear_of_gameplay(p, 5.0):
+	for i in 110:
+		var p = random_point()
+		if in_arena(p) or not clear_of_gameplay(p, 5.0) or layout.path_distance(p) < 4.0:
 			continue
 		stumps.append(Transform3D(Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3.ONE * rng.randf_range(0.8, 1.3)), p))
-	for i in 24:
-		var p = random_point(-100.0, Z_START, 1.0)
-		if abs(p.x) < 12.0 or not clear_of_gameplay(p, 7.0):
+	for i in 70:
+		var p = random_point()
+		if layout.path_distance(p) < 8.0 or in_arena(p, 4.0) or not clear_of_gameplay(p, 7.0):
 			continue
 		var b = Basis(Vector3.UP, rng.randf() * TAU) * Basis(Vector3.FORWARD, PI / 2.0)
 		logs.append(Transform3D(b.scaled(Vector3.ONE * rng.randf_range(0.8, 1.2)), p + Vector3(0, 0.55, 0)))
@@ -130,8 +130,8 @@ func scatter_floor():
 	add_multimesh(mushroom, shrooms, cap_mat)
 
 
-func in_arena(p: Vector3) -> bool:
-	return Vector2(p.x - ARENA_CENTRE.x, p.z - ARENA_CENTRE.z).length() < ARENA_RADIUS
+func in_arena(p: Vector3, margin: float = 0.0) -> bool:
+	return layout.in_arena(p, margin)
 
 
 func vertex_material() -> StandardMaterial3D:
@@ -276,13 +276,11 @@ func scatter_dead_trees():
 	var mat = ShaderMaterial.new()
 	mat.shader = OCCLUDER_SHADER
 	var placed = 0
-	for i in 160:
-		if placed >= 45:
+	for i in 500:
+		if placed >= 130:
 			break
-		var p = random_point(-172.0, DEEP_Z + 10.0, 1.2)
-		if abs(p.x) < 9.0 or not clear_of_gameplay(p, 6.0):
-			continue
-		if in_arena(p) and Vector2(p.x, p.z - ARENA_CENTRE.z).length() < ARENA_RADIUS - 4.0:
+		var p = random_point(true)
+		if layout.path_distance(p) < 6.0 or not clear_of_gameplay(p, 6.0) or in_arena(p, 6.0):
 			continue
 		var tree = MeshInstance3D.new()
 		tree.mesh = meshes[placed % meshes.size()]
@@ -348,8 +346,8 @@ void fragment() {
 	ALBEDO = vec3(1.0, 0.86, 0.62) * across * down * strength * sway;
 }
 """
-	for i in 16:
-		var p = random_point(DEEP_Z + 4.0, Z_START, 0.0)
+	for i in 40:
+		var p = random_point(false)
 		if not clear_of_gameplay(p, 2.0):
 			continue
 		var mat = ShaderMaterial.new()
@@ -393,9 +391,9 @@ void fragment() {
 	ALPHA = a * edge * density;
 }
 """
-	for i in 22:
-		var z = lerp(DEEP_Z + 10.0, -165.0, float(i) / 21.0) + rng.randf_range(-6, 6)
-		var deep = clamp(inverse_lerp(DEEP_Z, -120.0, z), 0.0, 1.0)
+	for i in 55:
+		var at = random_point(true)
+		var deep = layout.deepness(at)
 		var mat = ShaderMaterial.new()
 		mat.shader = shader
 		mat.set_shader_parameter("density", lerp(0.22, 0.42, deep))
@@ -407,7 +405,7 @@ void fragment() {
 		mist.mesh = plane
 		mist.material_override = mat
 		mist.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mist.position = Vector3(rng.randf_range(-24, 24), 0.6 + rng.randf() * 0.6, z)
+		mist.position = at + Vector3(0, 0.6 + rng.randf() * 0.6, 0)
 		add_child(mist)
 
 
@@ -464,7 +462,8 @@ void fragment() {
 	cracks.mesh = plane
 	cracks.material_override = crack_mat
 	cracks.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	cracks.position = ARENA_CENTRE + Vector3(0, 0.07, 0)
+	var centre = layout.arena()
+	cracks.position = centre + Vector3(0, 0.07, 0)
 	cracks.set_meta("mat", crack_mat)
 	add_child(cracks)
 	GameState.boss_engaged.connect(func(_b): create_tween().tween_method(func(v): crack_mat.set_shader_parameter("boss_fight", v), 0.0, 1.0, 1.5))
@@ -481,7 +480,7 @@ void fragment() {
 	# Chain posts staked round it, chains running in toward the centre
 	for i in 6:
 		var a = TAU * i / 6.0 + 0.3
-		var at = ARENA_CENTRE + Vector3(cos(a), 0, sin(a)) * (ARENA_RADIUS - 6.0)
+		var at = centre + Vector3(cos(a), 0, sin(a)) * (ARENA_RADIUS - 6.0)
 		var post = MeshInstance3D.new()
 		var box = BoxMesh.new()
 		box.size = Vector3(1.4, 5.0, 1.4)
@@ -490,7 +489,7 @@ void fragment() {
 		post.position = at + Vector3(0, 2.5, 0)
 		post.rotation = Vector3(rng.randf_range(-0.08, 0.08), a, rng.randf_range(-0.08, 0.08))
 		add_child(post)
-		var inward = (ARENA_CENTRE - at).normalized()
+		var inward = (centre - at).normalized()
 		for link in 9:
 			var ring = MeshInstance3D.new()
 			var torus = TorusMesh.new()
@@ -506,11 +505,13 @@ void fragment() {
 			ring.rotation = Vector3(PI / 2.0 if link % 2 == 0 else 0.0, a, 0)
 			add_child(ring)
 
-	# Braziers ringing the arena, so the fight is lit by fire
+	# Braziers ringing the arena, so the fight is lit by fire (none across
+	# the entrance)
+	var out_angle = atan2(layout.arena_out.z, layout.arena_out.x)
 	for i in 8:
-		var a = TAU * i / 8.0
-		var at = ARENA_CENTRE + Vector3(cos(a), 0, sin(a)) * (ARENA_RADIUS + 1.0)
-		if at.z > ARENA_Z - 6.0:
+		var a = TAU * i / 8.0 + PI / 8.0
+		var at = centre + Vector3(cos(a), 0, sin(a)) * (ARENA_RADIUS + 1.0)
+		if absf(angle_difference(a, out_angle)) < 0.5:
 			continue
 		var bowl = MeshInstance3D.new()
 		var cyl = CylinderMesh.new()
@@ -586,6 +587,6 @@ func _process(_delta):
 	fireflies.global_position = Vector3(at.x, 1.5, at.z)
 	ash.global_position = Vector3(at.x, 12.0, at.z)
 	# Fireflies in the outer forest, falling ash deeper in
-	var deep = clamp(inverse_lerp(DEEP_Z + 10.0, ARENA_Z, local.z), 0.0, 1.0)
+	var deep = clampf(layout.deepness(local) * 1.6, 0.0, 1.0)
 	fireflies.emitting = deep < 0.5
 	ash.emitting = deep > 0.15

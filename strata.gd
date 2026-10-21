@@ -1,24 +1,21 @@
 extends RefCounted
 
-# The kinds of block a mining site (voxel_site.gd) is built from: soil and
-# rock in realistic layers, with ore where it really forms. Each block has
+# The earth and rock a mining site (dig_site.gd) is made of: soil and rock
+# in realistic layers, with ore where it really forms. Each material has
 #   hardness  the pickaxe tier needed to break it well (0 = by hand)
-#   hits      how much striking it takes at that tier's power
+#   hits      how much striking it takes at that tier's power (harder rock
+#             gives up less to each strike)
 #   drop      what breaking it leaves on the ground (chance: how often)
-# Textures are pixel art drawn here into one atlas (voxel.gdshader).
-
-const SIZE = 4.0
-const TILE = 16
+# base is the rock's colour; fleck the ore or grain in it, flecks how much;
+# glow: Emberstone's veins burn (dig_site.gdshader).
 
 enum {
 	AIR, TOPSOIL, DIRT, CLAY, GRAVEL, TIN_GRAVEL, SANDSTONE, LIMESTONE, COAL,
 	MALACHITE, GRANITE, CASSITERITE, HEMATITE, BASALT, EMBERSTONE, ASH, BEDROCK,
 }
 
-# base: rock colour; fleck: ore or grain colour; flecks: how much of it;
-# glow: Emberstone's veins burn
 const DEFS = {
-	TOPSOIL: {"name": "Topsoil", "hardness": 0, "hits": 2.0, "drop": "Flint", "chance": 0.1, "base": Color(0.32, 0.24, 0.16), "fleck": Color(0.22, 0.17, 0.12), "flecks": 0.2, "top": Color(0.2, 0.28, 0.16)},
+	TOPSOIL: {"name": "Topsoil", "hardness": 0, "hits": 2.0, "drop": "Flint", "chance": 0.1, "base": Color(0.32, 0.24, 0.16), "fleck": Color(0.22, 0.17, 0.12), "flecks": 0.2},
 	DIRT: {"name": "Dirt", "hardness": 0, "hits": 2.0, "drop": "Flint", "chance": 0.08, "base": Color(0.33, 0.24, 0.16), "fleck": Color(0.24, 0.18, 0.12), "flecks": 0.25},
 	CLAY: {"name": "Clay", "hardness": 0, "hits": 3.0, "drop": "Clay", "chance": 1.0, "base": Color(0.58, 0.36, 0.24), "fleck": Color(0.66, 0.44, 0.3), "flecks": 0.15},
 	GRAVEL: {"name": "Gravel", "hardness": 0, "hits": 2.0, "drop": "Flint", "chance": 0.4, "base": Color(0.45, 0.43, 0.42), "fleck": Color(0.3, 0.29, 0.29), "flecks": 0.45},
@@ -36,69 +33,10 @@ const DEFS = {
 	BEDROCK: {"name": "Bedrock", "hardness": 99, "hits": INF, "drop": "", "chance": 0.0, "base": Color(0.1, 0.09, 0.1), "fleck": Color(0.16, 0.15, 0.16), "flecks": 0.4},
 }
 
-# Atlas columns: one per block kind (index = block id), plus the grassy
-# top of topsoil in the last column
-const COLUMNS = 18
-const GRASS_TOP = 17
 
-static var _atlas: ImageTexture = null
+static func def(material: int) -> Dictionary:
+	return DEFS.get(material, {})
 
 
-static func def(block: int) -> Dictionary:
-	return DEFS.get(block, {})
-
-
-static func breakable(block: int) -> bool:
-	return block != AIR and block != BEDROCK
-
-
-# Which atlas tile a face shows
-static func tile(block: int, face_up: bool) -> int:
-	return GRASS_TOP if block == TOPSOIL and face_up else block
-
-
-# Pixel-art tiles: speckled rock with darker edges; ore as clustered
-# flecks; Emberstone's veins marked in alpha so the shader can make them
-# glow. Seeded, so every run draws the same.
-static func atlas() -> ImageTexture:
-
-	if _atlas:
-		return _atlas
-	var img = Image.create(TILE * COLUMNS, TILE, false, Image.FORMAT_RGBA8)
-	var rng = RandomNumberGenerator.new()
-	rng.seed = 1337
-	for block in DEFS:
-		draw_tile(img, block, DEFS[block], rng)
-	var grass = DEFS[TOPSOIL].duplicate()
-	grass["base"] = DEFS[TOPSOIL]["top"]
-	grass["fleck"] = Color(0.28, 0.38, 0.2)
-	draw_tile(img, GRASS_TOP, grass, rng)
-	_atlas = ImageTexture.create_from_image(img)
-	return _atlas
-
-
-static func draw_tile(img: Image, column: int, d: Dictionary, rng: RandomNumberGenerator):
-
-	var ox = column * TILE
-	var glow = d.get("glow", false)
-	for y in TILE:
-		for x in TILE:
-			var c: Color = d["base"]
-			c = c.lightened(rng.randf_range(-0.06, 0.06)) if rng.randf() < 0.5 else c.darkened(rng.randf_range(0.0, 0.08))
-			var alpha = 1.0
-			if rng.randf() < d["flecks"] * 0.5:
-				c = d["fleck"]
-				if glow:
-					alpha = 0.0
-			# Edges a touch darker so blocks read as blocks
-			if x == 0 or y == 0 or x == TILE - 1 or y == TILE - 1:
-				c = c.darkened(0.25)
-			img.set_pixel(ox + x, y, Color(c.r, c.g, c.b, alpha))
-	# Ore and grain gather into clumps rather than single pixels
-	var clumps = int(d["flecks"] * 6.0)
-	for i in clumps:
-		var cx = rng.randi_range(2, TILE - 4)
-		var cy = rng.randi_range(2, TILE - 4)
-		for p in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)]:
-			if rng.randf() < 0.8:
-				img.set_pixel(ox + cx + p.x, cy + p.y, Color(d["fleck"].r, d["fleck"].g, d["fleck"].b, 0.0 if glow else 1.0))
+static func breakable(material: int) -> bool:
+	return material != AIR and material != BEDROCK

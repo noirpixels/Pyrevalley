@@ -65,8 +65,10 @@ var combo_trophies = []
 # True while the Ashbound is fighting (shrines won't heal)
 var boss_fight = false
 # The host's world objects as last saved (net_sync.gd applies them):
-# dug blocks, felled trees, built stations, the blood moon's clock
+# dug hollows, felled trees, built stations, the blood moon's clock
 var saved_objects = {}
+# Which forest this is (world_gen.gd); a guest gets the host's
+var world_seed = 1
 
 
 # ============================================================
@@ -101,6 +103,8 @@ func new_game():
 	max_combo = BASE_MAX_COMBO
 	combo_trophies = []
 	saved_objects = {}
+	# Every new game is a new forest
+	world_seed = randi_range(1, 999999)
 	# The codex is kept across runs; load_game() fills it from the save
 	loaded = true
 
@@ -371,6 +375,7 @@ func save_game(player: Node3D = null):
 		"boss_defeated": boss_defeated,
 		"max_combo": max_combo,
 		"combo_trophies": combo_trophies,
+		"world_seed": world_seed,
 	}
 	# Only the world's owner saves it
 	if Net.is_host() and NetSync.world:
@@ -401,6 +406,14 @@ func load_game() -> bool:
 	max_combo = clampi(int(data.get("max_combo", BASE_MAX_COMBO)), BASE_MAX_COMBO, MAX_COMBO_LIMIT)
 	combo_trophies = data.get("combo_trophies", [])
 	saved_objects = data.get("world_objects", {})
+	if data.has("world_seed"):
+		world_seed = int(data["world_seed"])
+	else:
+		# Saved before the forest was generated: keep what Veyl carries and
+		# knows, but wake vem in a new forest (new_game picked its seed)
+		player_position = null
+		checkpoint_position = null
+		saved_objects = {}
 
 	# JSON numbers come back as floats
 	inventory = {}

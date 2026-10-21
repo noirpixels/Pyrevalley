@@ -1,16 +1,15 @@
 extends Node3D
 
 # What's left of the people who worked metal in Emberwood before: the Old
-# Smithy, a roofless ruin west of Rowan's fire, and a heap of broken blades
-# in the Deep Forest. Their salvage (an anvil, tongs, bellows, scrap) is
+# Smithy, a roofless ruin in the outer forest, and a heap of broken blades
+# in the Deep Forest (where this world put them, world_gen.gd). Their salvage (an anvil, tongs, bellows, scrap) is
 # what Veyl needs to build a furnace and a forge. Each piece lies there
 # once per world (placed pickups, so it stays taken in the save).
 # Lives under Emberwood, in its local space.
 
 const ItemPickup = preload("res://item_pickup.gd")
+const WorldGen = preload("res://world_gen.gd")
 
-const SMITHY = Vector3(-32, 0, 2)
-const BLADES = Vector3(-24, 0, -84)
 const STONE = Color(0.3, 0.29, 0.3)
 const CHAR = Color(0.09, 0.07, 0.06)
 
@@ -24,8 +23,11 @@ func _ready():
 
 func build_smithy():
 
+	var layout = WorldGen.current
 	var smithy = Node3D.new()
-	smithy.position = SMITHY
+	smithy.position = layout.places["smithy"]
+	# Its open side (+z) faces the path
+	smithy.rotation.y = atan2(layout.smithy_facing.x, layout.smithy_facing.z)
 	add_child(smithy)
 
 	# Broken walls on three sides, open toward the path
@@ -49,7 +51,7 @@ func build_smithy():
 func build_blades():
 
 	var heap = Node3D.new()
-	heap.position = BLADES
+	heap.position = WorldGen.current.places["blades"]
 	add_child(heap)
 	for i in 5:
 		var a = i * 1.3

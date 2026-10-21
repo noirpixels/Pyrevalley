@@ -2,16 +2,16 @@ extends Node3D
 
 # Things lying on the forest floor for anyone to pick up: dry branches
 # under the pines and flint along the paths. They're how a new Veyl gets
-# started (a stone pickaxe and axe need both). Scattered from a fixed seed
-# so they're in the same places every run; the host puts each back
-# REGROW_TIME after it's taken. Lives under Emberwood, in its local space.
+# started (a stone pickaxe and axe need both). Scattered from the world's
+# seed (world_gen.gd), so they're in the same places every run; the host
+# puts each back REGROW_TIME after it's taken. Lives under Emberwood, in
+# its local space.
 
-const MiningSites = preload("res://mining_sites.gd")
+const WorldGen = preload("res://world_gen.gd")
 
-const SPOTS = 44
+const SPOTS = 110
 const REGROW_TIME = 150.0
 const CHECK_EVERY = 3.0
-const HALF_WIDTH = 36.0
 
 # Emberwood-space spots, and what each grows
 var spots: Array = []
@@ -24,8 +24,10 @@ var check_timer: float = 1.5
 func _ready():
 
 	name = "Forage"
+	var layout = WorldGen.current
 	var rng = RandomNumberGenerator.new()
-	rng.seed = 777
+	rng.seed = layout.seed_value + 777
+	var bounds: Rect2 = WorldGen.BOUNDS.grow(-10.0)
 	var level = get_parent()
 	var avoid = []
 	for group in ["Creatures", "Shrines", "Gates", "LoreStones", "Pickups"]:
@@ -33,12 +35,18 @@ func _ready():
 		if node:
 			for child in node.get_children():
 				avoid.append(child.position)
-	while spots.size() < SPOTS:
-		var p = Vector3(rng.randf_range(-HALF_WIDTH, HALF_WIDTH), 0, rng.randf_range(-95.0, 118.0))
-		if MiningSites.covers(p, 4.0) or avoid.any(func(a): return Vector2(p.x - a.x, p.z - a.z).length() < 6.0):
+	var tries = 0
+	while spots.size() < SPOTS and tries < SPOTS * 20:
+		tries += 1
+		var p = Vector3(rng.randf_range(bounds.position.x, bounds.end.x), 0, rng.randf_range(bounds.position.y, bounds.end.y))
+		if layout.on_site(p, 4.0) or layout.in_arena(p, 6.0) or absf(layout.deep_line(p.x) - p.z) < 5.0:
 			continue
-		spots.append({"pos": p, "item": "Flint" if rng.randf() < 0.35 else "Branch"})
-	for i in SPOTS:
+		if avoid.any(func(a): return Vector2(p.x - a.x, p.z - a.z).length() < 6.0):
+			continue
+		# Flint along the paths, branches under the pines
+		var flint = layout.path_distance(p) < 7.0
+		spots.append({"pos": p, "item": "Flint" if rng.randf() < (0.6 if flint else 0.2) else "Branch"})
+	for i in spots.size():
 		lying.append(null)
 		regrow_left.append(0.0)
 

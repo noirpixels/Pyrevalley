@@ -1,21 +1,19 @@
 extends Node3D
 
-# The Proving Ring: a circle of ember walls off to the east of the Starting
-# Area where players can fight each other. PvP only works while both
+# The Proving Ring: a circle of ember walls in the outer forest (where this
+# world put it, world_gen.gd) where players can fight each other. PvP only works while both
 # players stand inside it (player_3d.gd resolve_swing); everywhere else in
-# Emberwood, swords pass through friends. A portal by the start leads in,
-# and one inside leads back. The Ember Shade (duel_bot.gd) waits inside
+# Emberwood, swords pass through friends. A portal by the Waking Glade
+# leads in, and one inside leads back. The Ember Shade (duel_bot.gd) waits inside
 # to fight anyone who comes in, so the ring is there in solo games too.
 # Lives under Emberwood, so positions are in its local space.
 
 const EmberWall = preload("res://ember_wall.gd")
 const DuelBot = preload("res://duel_bot.gd")
+const WorldGen = preload("res://world_gen.gd")
 
-const CENTRE = Vector3(85, 0, 95)
-const RADIUS = 18.0
+const RADIUS = WorldGen.RING_RADIUS
 const SEGMENTS = 12
-# Portal by the Starting Area, inside the level bounds
-const OUTER_PORTAL = Vector3(14, 0, 110)
 
 # Local Duel (duel.gd) uses just the walls: no portals, no Shade, and it
 # stays where it's put
@@ -61,7 +59,7 @@ func _ready():
 
 	add_to_group("pvp_ring")
 	if not arena_only:
-		position = CENTRE
+		position = WorldGen.current.places["ring"]
 
 	var chord = 2.0 * RADIUS * sin(PI / SEGMENTS)
 	for i in SEGMENTS:
@@ -97,7 +95,7 @@ func _ready():
 	add_child(inner)
 
 	var outer = Portal.new("The Proving Ring\nduels with the Ember Shade and other players", "Enter the Proving Ring", spawn_point)
-	outer.position = OUTER_PORTAL - CENTRE
+	outer.position = WorldGen.current.ring_portal - position
 	add_child(outer)
 
 	# The host runs the Shade; guests see it through net_sync.gd
@@ -122,4 +120,4 @@ func spawn_point() -> Vector3:
 
 func outer_portal_point() -> Vector3:
 
-	return to_global(OUTER_PORTAL - CENTRE + Vector3(-4.0, 6.0, 0))
+	return to_global(WorldGen.current.ring_portal - position + Vector3(-4.0, 6.0, 0))

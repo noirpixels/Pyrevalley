@@ -2,8 +2,8 @@ extends RefCounted
 
 # What a swing does to rock and wood. The striking player's machine judges
 # the tool against the target (and wears the tool down there); the host
-# then applies the work (voxel_site.gd, tree.gd host_request).
-#   Pickaxe on a block: full power if its tier matches the rock's hardness;
+# then applies the work (dig_site.gd, tree.gd host_request).
+#   Pickaxe on rock: full power if its tier matches the rock's hardness;
 #     one tier short is slow and wears it three times as fast; two short and
 #     it glances off, wearing it badly.
 #   Axe on a tree: fells it in a few strokes.
@@ -12,14 +12,14 @@ extends RefCounted
 #     from trees, and hurt on stone.
 
 const Items = preload("res://items.gd")
-const Blocks = preload("res://blocks.gd")
+const Strata = preload("res://strata.gd")
 const HitSpark = preload("res://hit_spark.gd")
 const FloatingText = preload("res://floating_text.gd")
 
 # How far a swing reaches a tree trunk
 const TREE_REACH = 7.5
 const TREE_ARC = 75.0
-const BLOCK_REACH = 6.5
+const DIG_REACH = 6.5
 # Fists on a tree: chance a branch drops
 const SHAKE_CHANCE = 0.35
 const FIST_HURT = 2
@@ -37,12 +37,12 @@ static func strike(veyl: Node3D, move: Dictionary, aim: Vector3, gear: Dictionar
 		if tree:
 			chop(veyl, tree, type, gear)
 			return true
-	for site in veyl.get_tree().get_nodes_in_group("voxel_sites"):
-		if not site.near(veyl.global_position, BLOCK_REACH + 4.0):
+	for site in veyl.get_tree().get_nodes_in_group("dig_sites"):
+		if not site.near(veyl.global_position, DIG_REACH + 4.0):
 			continue
-		var i = site.pick(veyl, move["name"], aim, BLOCK_REACH)
-		if i >= 0:
-			mine(veyl, site, i, type, gear)
+		var hit = site.pick(veyl, move["name"], aim, DIG_REACH)
+		if not hit.is_empty():
+			mine(veyl, site, hit, type, gear)
 			return true
 	return false
 
@@ -66,16 +66,19 @@ static func find_tree(veyl: Node3D, aim: Vector3) -> Node3D:
 	return best
 
 
-static func mine(veyl: Node3D, site: Node3D, i: int, type: String, gear: Dictionary):
+# hit: where the swing met the site's earth (dig_site.gd pick)
+static func mine(veyl: Node3D, site: Node3D, hit: Dictionary, type: String, gear: Dictionary):
 
-	var block = site.blocks[i]
-	var d = Blocks.def(block)
-	var at = site.centre(site.cell(i))
+	var rock = site.material_at(hit["point"] - hit["normal"] * 0.5)
+	var d = Strata.def(rock)
+	if d.is_empty():
+		return
+	var at = site.to_global(hit["point"])
 	var amount = 0.0
 	var wear = 1.0
 	var note = ""
 
-	if block == Blocks.BEDROCK:
+	if rock == Strata.BEDROCK:
 		note = "Bedrock. Nothing will break it."
 		wear = 0.0
 	elif type == "Pickaxe":
@@ -112,7 +115,7 @@ static func mine(veyl: Node3D, site: Node3D, i: int, type: String, gear: Diction
 	impact(veyl, at, d["base"], amount > 0.0, d["hardness"])
 	nag(veyl, note)
 	if amount > 0.0:
-		NetSync.ask_host(site, ["strike", i, amount])
+		NetSync.ask_host(site, ["dig", hit["point"], hit["normal"], hit["axis"], amount])
 
 
 static func chop(veyl: Node3D, tree: Node3D, type: String, gear: Dictionary):

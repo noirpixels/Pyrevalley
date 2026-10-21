@@ -762,7 +762,8 @@ func perform_move(move: Dictionary):
 	# The blade connects a moment later, on the swing's strike frame
 	pending_swings.append({"move": move, "aim": aim_dir, "time": IMPACT_DELAY.get(move["name"], 0.07)})
 
-	if is_on_floor() and nearest_enemy_distance() > LUNGE_SKIP_DIST:
+	# A pick or axe works where Veyl stands, so a hole dug underfoot stays underfoot
+	if is_on_floor() and nearest_enemy_distance() > LUNGE_SKIP_DIST and not holding_tool():
 		lunge_timer = LUNGE_TIME
 		lunge_dir = aim_dir
 
@@ -1313,16 +1314,18 @@ func foot_height() -> float:
 	return ($CollisionShape3D.shape as CylinderShape3D).height / 2.0 * scale.y
 
 
-# Walking into a block wall with room above it: hop up onto it, the way
-# Terraria steps you up a ledge
+# Walking into a bank of a mining site too steep to walk up, with room
+# above it: hop up onto it, the way Terraria steps you up a ledge
 func climb(direction: Vector3):
 
 	for k in get_slide_collision_count():
 		var hit = get_slide_collision(k)
 		var collider = hit.get_collider()
-		if collider == null or not collider.is_in_group("voxel_sites") or abs(hit.get_normal().y) > 0.3:
+		var normal = hit.get_normal()
+		# Walkable ground or an overhang: nothing to climb
+		if collider == null or not collider.is_in_group("dig_sites") or normal.y > 0.7 or normal.y < -0.3:
 			continue
-		if hit.get_normal().dot(direction) > -0.3:
+		if Vector3(normal.x, 0, normal.z).normalized().dot(direction.normalized()) > -0.3:
 			continue
 		var up = Vector3.UP * 4.4
 		if not test_move(global_transform, up) and not test_move(global_transform.translated(up), direction.normalized() * 1.2):
