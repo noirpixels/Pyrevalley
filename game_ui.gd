@@ -22,6 +22,8 @@ var inventory
 var pause_menu
 var codex
 var ending
+# The Ashbound is beaten and the ending has been seen: back to the forest
+var exploring: bool = false
 
 
 func _ready():
@@ -62,6 +64,8 @@ func _ready():
 	ending = EndingScreen.new()
 	ending.multiplayer_session = Net.online
 	add_child(ending)
+	ending.keep_exploring_pressed.connect(keep_exploring)
+	exploring = GameState.boss_defeated
 	ending.play_again_pressed.connect(restart)
 	ending.menu_pressed.connect(quit_to_menu)
 
@@ -171,8 +175,7 @@ func restart():
 
 func quit_to_menu():
 
-	if not GameState.boss_defeated:
-		GameState.save_game(player)
+	GameState.save_game(player)
 	GameState.loaded = false
 	if Net.online:
 		Net.leave()
@@ -181,6 +184,16 @@ func quit_to_menu():
 	Sfx.stop_music()
 	Sfx.stop_ambience()
 	get_tree().change_scene_to_file("res://main_menu.tscn")
+
+
+# Back into the quiet forest after the ending
+func keep_exploring():
+
+	ending.visible = false
+	exploring = true
+	update_paused()
+	Sfx.play_ambience("forest")
+	hud.show_message("The forest is quiet. Explore it as long as you like.")
 
 
 func _on_player_died():

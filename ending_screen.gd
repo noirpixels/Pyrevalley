@@ -2,7 +2,9 @@ extends Control
 
 # After The Ashbound falls:
 #   "THE FOREST IS QUIET."  ->  "EMBERVALE / PROTOTYPE COMPLETE"
+# Then keep exploring the same forest, start a new one, or leave.
 
+signal keep_exploring_pressed
 signal play_again_pressed
 signal menu_pressed
 
@@ -50,6 +52,7 @@ func _ready():
 	spacer.custom_minimum_size = Vector2(0, 24)
 	final.add_child(spacer)
 
+	final.add_child(UI.button("KEEP EXPLORING", keep_exploring_pressed.emit))
 	if not multiplayer_session:
 		final.add_child(UI.button("PLAY AGAIN", play_again_pressed.emit))
 	final.add_child(UI.button("RETURN TO MENU", menu_pressed.emit))
@@ -58,6 +61,10 @@ func _ready():
 func play():
 
 	visible = true
+	bg.color.a = 0.0
+	quiet.modulate.a = 0.0
+	final.modulate.a = 0.0
+	final.visible = false
 
 	var tween = create_tween()
 	tween.tween_property(bg, "color:a", 1.0, 2.0)

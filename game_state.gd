@@ -79,8 +79,8 @@ var world_seed = 1
 func ensure_loaded():
 	if loaded:
 		return
-	# A finished prototype starts fresh from the menu
-	if not load_game() or boss_defeated:
+	# A forest with the Ashbound beaten carries on; Play Again starts a new one
+	if not load_game():
 		new_game()
 	loaded = true
 

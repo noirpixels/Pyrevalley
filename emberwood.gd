@@ -98,11 +98,12 @@ func update_signs():
 		fight_sign.text = "Left/right click to strike  ·  Scroll up to launch\nScroll down to slam  ·  Shift to dodge"
 
 
-# Outside the boss fight (which picks its own music), the place sets the
-# theme: Rowan's fire, the outer forest, or the Deep Forest
+# Outside the boss fight (which picks its own music) and the ending, the
+# place sets the theme: Rowan's fire, the outer forest, or the Deep Forest
 func update_music(local: Vector3):
 
-	if GameState.boss_fight or GameState.boss_defeated:
+	var ui = get_tree().get_first_node_in_group("game_ui")
+	if GameState.boss_fight or (GameState.boss_defeated and ui and not ui.exploring):
 		return
 	var rowan = get_node_or_null("Rowan")
 	if rowan and Vector2(local.x - rowan.position.x, local.z - rowan.position.z).length() < CAMP_RADIUS:
