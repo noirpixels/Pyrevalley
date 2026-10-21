@@ -222,6 +222,35 @@ func wear(slot: String, amount: float = 1.0):
 	gear_changed.emit()
 
 
+# Newly made gear goes straight into an empty slot
+func give_gear(item: Dictionary):
+	var id = add_gear(item)
+	if equipped.get(Items.slot(item), -1) == -1:
+		equip(id)
+
+
+# Forge work (crafting_panel.gd): mend to full, temper a level, set a magic
+func repair(id: int):
+	var item = find_gear(id)
+	item["durability"] = Items.max_durability(item)
+	gear_changed.emit()
+
+
+func temper(id: int):
+	var item = find_gear(id)
+	var worn = item["durability"] / Items.max_durability(item)
+	item["level"] = mini(item["level"] + 1, Items.MAX_LEVEL)
+	item["durability"] = Items.max_durability(item) * worn
+	update_weapon_name()
+	gear_changed.emit()
+
+
+func set_magic(id: int, magic: String):
+	find_gear(id)["magic"] = magic
+	update_weapon_name()
+	gear_changed.emit()
+
+
 # ============================================================
 # QUEST: CLEAR THE FOREST
 # ============================================================

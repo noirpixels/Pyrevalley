@@ -2,8 +2,8 @@ extends PanelContainer
 
 # Inventory: what's equipped (weapon, armour, pickaxe, axe), the rest of
 # Veyl's gear with EQUIP buttons, and materials. Gear shows its wear;
-# anything at zero has already broken (GameState.wear). Crafting and
-# building open from here too (crafting_panel.gd).
+# anything at zero has already broken (GameState.wear). Crafting by hand
+# and building open from here too (crafting_panel.gd, via game_ui.gd).
 
 signal closed
 signal craft_pressed(station)

@@ -59,9 +59,9 @@ const DEEP_PLACES = ["arena", "scar", "blades"]
 
 # Mining sites: size (x, z), depth below ground and the tallest the hill rises
 const SITES = {
-	"quarry": {"name": "OldQuarry", "title": "The Old Quarry", "size": Vector2(28, 24), "below": 20, "above": 12, "profile": "quarry"},
-	"knoll": {"name": "GraniteKnoll", "title": "The Granite Knoll", "size": Vector2(20, 24), "below": 20, "above": 16, "profile": "knoll"},
-	"scar": {"name": "AshenScar", "title": "The Ashen Scar", "size": Vector2(20, 20), "below": 24, "above": 12, "profile": "scar"},
+	"quarry": {"name": "OldQuarry", "title": "The Old Quarry", "size": Vector2(28, 24), "below": 20, "above": 9, "profile": "quarry"},
+	"knoll": {"name": "GraniteKnoll", "title": "The Granite Knoll", "size": Vector2(20, 24), "below": 20, "above": 7, "profile": "knoll"},
+	"scar": {"name": "AshenScar", "title": "The Ashen Scar", "size": Vector2(20, 20), "below": 24, "above": 7, "profile": "scar"},
 }
 
 # Creatures roaming each part of the forest (spawner names in game.tscn)

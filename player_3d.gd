@@ -71,8 +71,12 @@ const MEND_RATE = 0.6
 const ASHWEIGHT = 1.4
 # Emberbrand sets creatures burning for this long
 const BURN_TIME = 3.0
-# Hops up a one-block ledge at a mining site (blocks are taller than a jump)
+# Hops up a bank of a dug hole too steep to walk (taller than a jump)
 const CLIMB_SPEED = 15.5
+# Steepest ground Veyl walks up (the mining sites' hills stay under it),
+# and how far vae sticks to the ground walking down a slope
+const SLOPE_LIMIT = 52.0
+const FLOOR_SNAP = 2.0
 # Duels in the Proving Ring hit softer than Veyl's sword hits creatures
 const PVP_DAMAGE = 0.5
 # A remote Veyl this far from where its player has it jumps there
@@ -229,6 +233,9 @@ func _ready():
 	start_position = global_position
 	health = max_health
 	base_defense = defense
+	floor_max_angle = deg_to_rad(SLOPE_LIMIT)
+	floor_snap_length = FLOOR_SNAP
+	floor_constant_speed = true
 	if peer_id == NetSync.BOT_ID:
 		base_tint = SHADE_TINT
 
@@ -1323,7 +1330,7 @@ func climb(direction: Vector3):
 		var collider = hit.get_collider()
 		var normal = hit.get_normal()
 		# Walkable ground or an overhang: nothing to climb
-		if collider == null or not collider.is_in_group("dig_sites") or normal.y > 0.7 or normal.y < -0.3:
+		if collider == null or not collider.is_in_group("dig_sites") or normal.y > cos(deg_to_rad(SLOPE_LIMIT)) or normal.y < -0.3:
 			continue
 		if Vector3(normal.x, 0, normal.z).normalized().dot(direction.normalized()) > -0.3:
 			continue

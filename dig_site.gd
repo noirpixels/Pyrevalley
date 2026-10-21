@@ -39,6 +39,9 @@ const DIG_VOLUME = 140.0
 # A scoop reaches this far past the swinger's body on each side, and a
 # sideways one this far above and below the strike
 const SCOOP_MARGIN = 1.0
+# Digging straight down reaches further, so a hole dug on a slope is still
+# wide enough at its uphill lip to drop into
+const DOWN_MARGIN = 1.8
 const SCOOP_HALF_HEIGHT = 3.6
 const MIN_DEPTH = 0.35
 const MAX_DEPTH = 3.2
@@ -48,9 +51,10 @@ const CARVE_FIELDS = 9
 const YIELD_VOLUME = 40.0
 # A blood moon leaves hollows open this close to a Veyl
 const KEEP_RADIUS = 9.0
-# The hill rises from a flat rim (units) over this share of the site's width
+# The hill rises from a flat rim (units) over this share of the site's
+# width: a dome gentle enough to walk up (player_3d.gd SLOPE_LIMIT)
 const RIM = 1.0
-const RAMP = 0.4
+const RAMP = 0.5
 # The forest floor's look, shared with the grassy top (terrain.gdshaderinc)
 const TERRAIN_PARAMS = [
 	"terrain_textures", "texture_scale", "patch_scale", "blend_hardness", "ground_size", "mesh_offset_z",
@@ -170,7 +174,7 @@ func generate():
 			var rim = mini(mini(x, z), mini(nx - 1 - x, nz - 1 - z)) * H
 			var t = clampf((rim - RIM) / (minf(size.x, size.y) * RAMP), 0.0, 1.0)
 			t = t * t * (3.0 - 2.0 * t)
-			var height = (hill.get_noise_2d(x * H, z * H) * 0.5 + 0.6) * above * t
+			var height = (hill.get_noise_2d(x * H, z * H) * 0.25 + 0.75) * above * t
 			for y in ny:
 				var wy = y * H - below
 				var i = x + nx * (y + ny * z)
@@ -596,8 +600,9 @@ func host_request(args: Array, sender: int):
 	if not Strata.breakable(m):
 		return
 	# As wide as the swinger; as deep as the work done allows
-	var width = body_radius(veyl) + SCOOP_MARGIN
-	var height = width if absf(axis.y) > 0.7 else SCOOP_HALF_HEIGHT
+	var vertical = absf(axis.y) > 0.7
+	var width = body_radius(veyl) + (DOWN_MARGIN if vertical else SCOOP_MARGIN)
+	var height = width if vertical else SCOOP_HALF_HEIGHT
 	var volume = DIG_VOLUME * amount / Strata.def(m)["hits"]
 	var depth = clampf(3.0 * volume / (4.0 * PI * width * height), MIN_DEPTH, MAX_DEPTH)
 	NetSync.object_fx(self, "dig", [point - axis * depth * 0.25, axis, depth, width, height])

@@ -9,6 +9,8 @@ extends CanvasLayer
 const Hud = preload("res://hud.gd")
 const DialogueBox = preload("res://dialogue_box.gd")
 const InventoryPanel = preload("res://inventory_panel.gd")
+const CraftingPanel = preload("res://crafting_panel.gd")
+const Recipes = preload("res://recipes.gd")
 const PauseMenu = preload("res://pause_menu.gd")
 const CodexOverlay = preload("res://codex_overlay.gd")
 const EndingScreen = preload("res://ending_screen.gd")
@@ -19,6 +21,9 @@ var player: Node3D
 var hud
 var dialogue
 var inventory
+var crafting
+# Said once a session: the first stone tool can be made
+var told_about_crafting: bool = false
 var pause_menu
 var codex
 var ending
@@ -46,6 +51,12 @@ func _ready():
 	inventory = InventoryPanel.new()
 	add_child(inventory)
 	inventory.closed.connect(update_paused)
+	inventory.craft_pressed.connect(open_crafting)
+
+	crafting = CraftingPanel.new()
+	add_child(crafting)
+	crafting.closed.connect(update_paused)
+	GameState.inventory_changed.connect(hint_crafting)
 
 	pause_menu = PauseMenu.new()
 	pause_menu.multiplayer_session = Net.online
@@ -85,6 +96,8 @@ func _input(event):
 	if event.is_action_pressed("pause"):
 		if codex.visible:
 			codex.close()
+		elif crafting.visible:
+			crafting.close()
 		elif inventory.visible:
 			inventory.close()
 		else:
@@ -93,9 +106,11 @@ func _input(event):
 		toggle_inventory()
 	elif event.is_action_pressed("codex"):
 		toggle_codex()
-	elif event is InputEventJoypadButton and event.is_action_pressed("ui_cancel") and (inventory.visible or pause_menu.visible):
+	elif event is InputEventJoypadButton and event.is_action_pressed("ui_cancel") and (inventory.visible or crafting.visible or pause_menu.visible):
 		# The codex has its own BACK button, which pad.gd presses
-		if inventory.visible:
+		if crafting.visible:
+			crafting.close()
+		elif inventory.visible:
 			inventory.close()
 		else:
 			toggle_pause()
@@ -111,7 +126,7 @@ func _input(event):
 
 func update_paused():
 
-	var paused = dialogue.visible or inventory.visible or pause_menu.visible or codex.visible or ending.visible
+	var paused = dialogue.visible or inventory.visible or crafting.visible or pause_menu.visible or codex.visible or ending.visible
 	get_tree().paused = paused and not Net.online
 	player.input_blocked = paused
 	# Let pad.gd hand focus to whichever screen is now on top
@@ -144,6 +159,25 @@ func toggle_inventory():
 		pause_menu.visible = false
 		inventory.open()
 	update_paused()
+
+
+# From the inventory (by hand, or to build) or a station (stations.gd)
+func open_crafting(station: String):
+
+	inventory.visible = false
+	pause_menu.visible = false
+	crafting.open(station)
+	update_paused()
+
+
+# The first time a stone pickaxe is within reach, say where to make it
+func hint_crafting():
+
+	if told_about_crafting or not GameState.equipped_gear("pickaxe").is_empty():
+		return
+	if Recipes.can_afford(Recipes.HAND[0]["cost"]):
+		told_about_crafting = true
+		hud.toast("You could make a Stone Pickaxe: Inventory [%s], Craft by hand." % Pad.glyph("inventory"))
 
 
 func toggle_codex():
