@@ -7,8 +7,9 @@ extends "res://enemy.gd"
 #   ERUPTION - burning circles open under and around the player, then burst
 # Enraged: faster windups, the slam comes twice, eruptions spread wider.
 # Dashing through an attack (invulnerable) is the intended answer.
-# Too heavy to launch, but alternating hits can daze it, which cancels
-# whatever it was winding up.
+# Too heavy for a full launch: a rising hit heaves it partway up (never
+# mid-attack, and not again until it has been on its feet a while), and
+# alternating hits can daze it, which cancels whatever it was winding up.
 # Every attack is drawn on the ground first (telegraph.gd) and lands when
 # the warning fills. It rises with a title card the first time Veyl
 # faces it, and at half health it roars, throws Veyl back and catches fire.
@@ -34,6 +35,9 @@ const TERRITORY_MARGIN = 12.0
 const CHASE_SPEED_SCALE = 1.4
 const ERUPTION_RADIUS = 3.5
 const ERUPTION_DELAY = 1.0
+# Share of a launch it takes, and seconds before it can be launched again
+const LAUNCH_SCALE = 0.6
+const LAUNCH_REST = 4.0
 
 var attack_kind: String = "slam"
 var charge_dir: Vector3 = Vector3.ZERO
@@ -45,6 +49,7 @@ var followup: bool = false
 var engaged: bool = false
 var introduced: bool = false
 var phase_shift_left: float = 0.0
+var launch_rest: float = 0.0
 
 
 func _ready():
@@ -61,7 +66,6 @@ func _ready():
 	ember_drop_chance = 0.0
 	# Damage dealt sticks, even across Veyl's deaths
 	regenerates = false
-	launchable = false
 	dizzy_threshold = 240.0
 	dizzy_time = 1.4
 
@@ -345,6 +349,19 @@ func take_damage(amount: int, from: Vector3):
 		phase_shift()
 
 
+# A launch mid-attack would lift its slam ring or charge lane off the
+# ground, so it only takes one between attacks
+func apply_impact(push: Vector3, spin: float, dizzy_gain: float, launch: float, side: int):
+
+	if launch > 0.0:
+		if state == State.ATTACK or phase_shift_left > 0.0 or launch_rest > 0.0:
+			launch = 0.0
+		else:
+			launch *= LAUNCH_SCALE
+			launch_rest = LAUNCH_REST
+	super(push, spin, dizzy_gain, launch, side)
+
+
 # Half health: it roars, throws Veyl back, the ground erupts all round it,
 # and it fights faster and harder from here on
 func phase_shift():
@@ -387,6 +404,7 @@ func fx_phase_shift():
 func _physics_process(delta):
 
 	phase_shift_left = max(phase_shift_left - delta, 0.0)
+	launch_rest = max(launch_rest - delta, 0.0)
 	super(delta)
 
 

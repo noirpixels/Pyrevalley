@@ -79,6 +79,8 @@ const SLOPE_LIMIT = 52.0
 const FLOOR_SNAP = 2.0
 # Duels in the Proving Ring hit softer than Veyl's sword hits creatures
 const PVP_DAMAGE = 0.5
+# Share of a move's launch a Veyl takes from another Veyl
+const PVP_LAUNCH = 0.8
 # A remote Veyl this far from where its player has it jumps there
 const NET_SNAP_DIST = 10.0
 # The Ember Shade is drawn darker than a player's Veyl
@@ -974,10 +976,16 @@ func duel_strike(other: Node3D, move: Dictionary, combo_mult: float):
 	var away = other.global_position - global_position
 	away.y = 0
 	away = away.normalized() if away.length() > 0.01 else aim_dir
+	# Launches ride in the push's height (take_hit); aerial hits only
+	# spike a Veyl who is already in the air
+	var launch: float = move["launch"] * PVP_LAUNCH
+	if launch < 0.0 and other.grounded():
+		launch = 0.0
+	var push = away * move["push"] * 0.6 + Vector3.UP * launch
 	if other == opponent:
-		other.take_hit(amount, global_position, away * move["push"] * 0.6, 0)
+		other.take_hit(amount, global_position, push, 0)
 	else:
-		NetSync.pvp_hit(other.peer_id, amount, global_position, away * move["push"] * 0.6, net_id())
+		NetSync.pvp_hit(other.peer_id, amount, global_position, push, net_id())
 
 	var spark_at = other.global_position + Vector3(0, 3.0, 0)
 	HitSpark.spawn(get_parent(), spark_at, away + Vector3.UP * 0.6, Color(1.0, 0.5, 0.15), 14)
@@ -1211,7 +1219,13 @@ func take_hit(amount: int, from: Vector3, push: Vector3, attacker: int):
 		last_attacker = attacker
 	take_damage(amount, from)
 	if health < before:
-		velocity += push
+		velocity.x += push.x
+		velocity.z += push.z
+		# Height is a launch (up) or a spike (down), not added to a jump
+		if push.y > 0.0:
+			velocity.y = max(velocity.y, push.y)
+		elif push.y < 0.0:
+			velocity.y = min(velocity.y, push.y)
 
 
 func heal(amount: float):
