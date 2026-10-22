@@ -10,9 +10,13 @@ const Player = preload("res://player.gd")
 const Fx = preload("res://fx.gd")
 
 const CAMERA_FOLLOW = 7.0
+const INTERACT_RANGE = 110.0
 const CAMERA_LOOK_AHEAD = 70.0
 # Vertical framing: Veyl sits a little below the middle of the screen
 const CAMERA_LIFT = 70.0
+# The arena is two screens wide: pull back and frame Veyl and the Ashbound
+const ARENA_ZOOM = 0.8
+const ARENA_FRAMING = 0.4
 
 var world: Dictionary
 var rooms = []
@@ -21,6 +25,8 @@ var camera: Camera2D
 var current_room: Room
 var fx: Fx
 var spawner: Node
+var shake_amount: float = 0.0
+var interact_target: Node2D = null
 
 
 func _ready():
@@ -44,6 +50,9 @@ func _ready():
 		spawner = load("res://spawner.gd").new()
 		add_child(spawner)
 		spawner.populate(self)
+		for room in rooms:
+			room.terrain.ore_uncovered.connect(func(item, at): spawner.drop_item(item, room.position + at))
+	replay_digs()
 
 	player = Player.new()
 	player.name = "Veyl"
@@ -54,6 +63,7 @@ func _ready():
 	player.health = GameState.health if GameState.health > 0.0 else GameState.max_health
 	player.died.connect(_on_player_died)
 
+	RenderingServer.set_default_clear_color(Color(0.03, 0.025, 0.035))
 	camera = Camera2D.new()
 	add_child(camera)
 	camera.make_current()
@@ -88,6 +98,15 @@ func add_backdrop():
 		sprite.scale = Vector2(l[2], l[2])
 		parallax.add_child(sprite)
 		add_child(parallax)
+
+
+# Ground dug in earlier sessions, from the save
+func replay_digs():
+
+	for room in rooms:
+		var key = GameState.cell_key(room.cell)
+		for d in GameState.dig_log.get(key, []):
+			room.terrain.dig(Vector2(d[0], d[1]), d[2], int(d[3]), true)
 
 
 func room_at(pos: Vector2) -> Room:
@@ -134,8 +153,38 @@ func _process(delta):
 	if player == null:
 		return
 	update_room(false)
+	var zoom = ARENA_ZOOM if current_room and current_room.data["role"] == "boss" else 1.0
+	camera.zoom = camera.zoom.lerp(Vector2(zoom, zoom), 1.0 - exp(-3.0 * delta))
 	var target = camera_target(false)
 	camera.global_position = camera.global_position.lerp(target, 1.0 - exp(-CAMERA_FOLLOW * delta))
+	shake_amount = move_toward(shake_amount, 0.0, delta * 2.5)
+	camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * shake_amount * 14.0
+	update_interaction()
+
+
+func shake(amount: float):
+	shake_amount = max(shake_amount, amount)
+
+
+# The nearest thing Veyl can use, shown as a prompt; E uses it
+func update_interaction():
+
+	var hud = get_tree().get_first_node_in_group("hud")
+	var best: Node2D = null
+	var best_d = INTERACT_RANGE
+	if not player.dead and not player.input_blocked:
+		for node in get_tree().get_nodes_in_group("interactable"):
+			if not node.is_visible_in_tree():
+				continue
+			var d = node.global_position.distance_to(player.global_position + Vector2(0, -40))
+			if d < best_d:
+				best_d = d
+				best = node
+	interact_target = best
+	if hud:
+		hud.set_prompt(best.prompt_text() if best else "")
+	if best and Input.is_action_just_pressed("interact") and not get_tree().paused:
+		best.interact(player)
 
 
 # Follows Veyl, held inside the current room so the next room only shows
@@ -144,6 +193,10 @@ func camera_target(_instant: bool) -> Vector2:
 
 	var view = get_viewport_rect().size / camera.zoom
 	var want = player.global_position + Vector2(player.facing * CAMERA_LOOK_AHEAD, -CAMERA_LIFT)
+	if current_room and current_room.data["role"] == "boss":
+		for c in get_tree().get_nodes_in_group("creatures"):
+			if c.kind_name == "The Ashbound" and not c.is_dead():
+				want.x = lerp(player.global_position.x, c.global_position.x, ARENA_FRAMING)
 	var r = current_room.rect if current_room else Rect2(want - view / 2.0, view)
 	var x = r.get_center().x if r.size.x <= view.x else clamp(want.x, r.position.x + view.x / 2.0, r.end.x - view.x / 2.0)
 	var y = r.get_center().y if r.size.y <= view.y else clamp(want.y, r.position.y + view.y / 2.0, r.end.y - view.y / 2.0)

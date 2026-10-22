@@ -34,6 +34,7 @@ var texture: ImageTexture
 var sprite: Sprite2D
 var body: StaticBody2D
 var ember_cells = []    # tiles that hurt, for the room to make into hazards
+var ore_marks: Node2D
 
 
 func build(rows: Array, noise_seed: int):
@@ -81,6 +82,10 @@ func build(rows: Array, noise_seed: int):
 	mat.set_shader_parameter("cells", Vector2(w, h))
 	sprite.material = mat
 	add_child(sprite)
+
+	ore_marks = OreMarks.new()
+	ore_marks.terrain = self
+	add_child(ore_marks)
 
 	body = StaticBody2D.new()
 	body.collision_layer = LAYER_WORLD
@@ -201,6 +206,7 @@ func release_ores(quiet: bool):
 					open += 1
 		if open * 2 >= total:
 			ores.erase(ore)
+			ore_marks.queue_redraw()
 			if not quiet:
 				ore_uncovered.emit(ore["item"], ore["at"])
 
@@ -246,3 +252,21 @@ func row_free(x: int, y: int, run: int, used: PackedByteArray) -> bool:
 		if used[i] or density[i] < 0.5:
 			return false
 	return true
+
+
+# Glints of ore showing through the earth, so you know where to dig
+class OreMarks:
+	extends Node2D
+
+	const COLORS = {"Copper Ore": Color(0.35, 0.9, 0.6), "Tin Ore": Color(0.7, 0.68, 0.85), "Flint": Color(0.85, 0.87, 0.9)}
+
+	var terrain: Node2D
+
+	func _draw():
+		for ore in terrain.ores:
+			var c: Color = COLORS.get(ore["item"], Color.WHITE)
+			var at: Vector2 = ore["at"]
+			for k in 3:
+				var o = Vector2(sin(at.x * 0.37 + k * 2.1), cos(at.y * 0.29 + k * 1.7)) * 9.0
+				var pts = PackedVector2Array([at + o + Vector2(0, -6), at + o + Vector2(5, 0), at + o + Vector2(0, 6), at + o + Vector2(-5, 0)])
+				draw_colored_polygon(pts, Color(c.r, c.g, c.b, 0.85))

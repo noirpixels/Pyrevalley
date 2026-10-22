@@ -36,6 +36,8 @@ const STEP_HEIGHT = 16.0
 const DROP_TIME = 0.25
 const HURT_INVULN = 0.7
 const PIT_DAMAGE = 15.0
+# The Mosswoven charm's mending, per second
+const MEND_RATE = 0.8
 
 const LAYER_PLAYER = 4
 
@@ -94,6 +96,17 @@ func _ready():
 	spawn_position = global_position
 	add_to_group("remote_players" if remote else "player")
 	add_to_group("players")
+	refresh_held()
+
+
+# What's in Veyl's hand: the weapon, or nothing for fists
+func refresh_held():
+
+	var weapon = GameState.gear.get("weapon") if not remote else null
+	if weapon:
+		animator.set_held(weapon["type"], weapon["material"])
+	else:
+		animator.set_held("", "")
 
 
 func grounded() -> bool:
@@ -123,6 +136,9 @@ func _physics_process(delta):
 
 	var dir = 0.0 if input_blocked else Input.get_axis("move_left", "move_right")
 	var on_floor = is_on_floor()
+	var charm = GameState.gear.get("charm")
+	if charm and charm["material"] == "Mosswoven" and health < max_health:
+		heal(MEND_RATE * delta)
 
 	if on_floor:
 		coyote_timer = COYOTE_TIME

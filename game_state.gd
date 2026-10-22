@@ -30,7 +30,9 @@ var seed_value: int = 0
 var abilities = {}
 var inventory = {}
 # Equipped gear by slot: {"type", "material"}; no weapon means fists
-var gear = {"weapon": {"type": "Sword", "material": "Rusted"}, "pickaxe": null}
+var gear = {"weapon": {"type": "Sword", "material": "Rusted"}, "pickaxe": null, "charm": null}
+# Every piece of gear Veyl has (crafting_panel.gd picks what's in hand)
+var owned = []
 var max_health: float = 100.0
 var health: float = -1.0
 # The shrine Veyl last rested at (grid cell), where vae wakes after dying
@@ -55,7 +57,8 @@ func new_game(world_seed: int):
 	seed_value = world_seed
 	abilities = {}
 	inventory = {}
-	gear = {"weapon": {"type": "Sword", "material": "Rusted"}, "pickaxe": null}
+	owned = [{"type": "Sword", "material": "Rusted"}]
+	gear = {"weapon": owned[0], "pickaxe": null, "charm": null}
 	max_health = 100.0
 	health = -1.0
 	shrine_cell = null
@@ -167,6 +170,7 @@ func save_game(player: Node = null):
 		"abilities": abilities,
 		"inventory": inventory,
 		"gear": gear,
+		"owned": owned,
 		"max_health": max_health,
 		"health": health,
 		"shrine_cell": [shrine_cell.x, shrine_cell.y] if shrine_cell != null else null,
@@ -194,7 +198,15 @@ func load_game() -> bool:
 	inventory = {}
 	for item in data.get("inventory", {}):
 		inventory[item] = int(data["inventory"][item])
-	gear = data.get("gear", gear)
+	owned = data.get("owned", owned)
+	# Equipped gear points at the owned pieces, so the pack can tell them apart
+	var saved_gear = data.get("gear", {})
+	for slot in gear:
+		gear[slot] = null
+		var g = saved_gear.get(slot)
+		for o in owned:
+			if g is Dictionary and o["type"] == g["type"] and o["material"] == g["material"]:
+				gear[slot] = o
 	max_health = data.get("max_health", 100.0)
 	health = data.get("health", -1.0)
 	var shrine = data.get("shrine_cell")
