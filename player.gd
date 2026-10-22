@@ -61,6 +61,9 @@ var invuln_timer: float = 0.0
 var drop_timer: float = 0.0
 var knockback: Vector2 = Vector2.ZERO
 var jump_held: bool = false
+# A remote Veyl eases toward where its player last said it was
+var net_position: Vector2
+var net_on_floor: bool = true
 # Ground to put Veyl back on after an ember pit
 var safe_position: Vector2
 var spawn_position: Vector2
@@ -72,8 +75,8 @@ var digger: Node
 
 func _ready():
 
-	collision_layer = LAYER_PLAYER
-	collision_mask = 1 | 2
+	collision_layer = 0 if remote else LAYER_PLAYER
+	collision_mask = 0 if remote else 1 | 2
 	floor_snap_length = 10.0
 	floor_max_angle = deg_to_rad(50.0)
 	var shape = CapsuleShape2D.new()
@@ -110,7 +113,71 @@ func refresh_held():
 
 
 func grounded() -> bool:
-	return is_on_floor()
+	return net_on_floor if remote else is_on_floor()
+
+
+# ============================================================
+# NETWORK (net_sync.gd)
+# ============================================================
+
+func net_state() -> Array:
+
+	var flags = (1 if is_on_floor() else 0) | (2 if dead else 0) | (4 if dash_timer > 0.0 else 0)
+	var weapon = GameState.gear.get("weapon")
+	var held = (weapon["type"] + "/" + weapon["material"]) if weapon else ""
+	return [global_position, velocity, facing, flags, held]
+
+
+func apply_net_state(state: Array):
+
+	net_position = state[0]
+	velocity = state[1]
+	facing = state[2]
+	var flags: int = state[3]
+	net_on_floor = flags & 1 != 0
+	var was_dead = dead
+	dead = flags & 2 != 0
+	dash_timer = 0.1 if flags & 4 else 0.0
+	if was_dead and not dead:
+		global_position = net_position
+	var held: String = state[4]
+	if held != get_meta("held", "-"):
+		set_meta("held", held)
+		var parts = held.split("/")
+		animator.set_held(parts[0] if held != "" else "", parts[1] if parts.size() > 1 else "")
+
+
+func remote_fx(kind: String, args: Array):
+
+	match kind:
+		"swing":
+			animator.swing(args[0])
+			add_child(load("res://slash_effect.gd").new(args[1], args[2], facing))
+		"hurt":
+			animator.hurt()
+			flash(Color(1.0, 0.35, 0.3))
+
+
+func add_name_label(text: String):
+
+	var label = Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 18)
+	label.add_theme_color_override("font_outline_color", Color.BLACK)
+	label.add_theme_constant_override("outline_size", 6)
+	label.position = Vector2(-60, -140)
+	label.size = Vector2(120, 24)
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(label)
+	animator.sprite.modulate = Color(0.75, 0.82, 1.0)
+
+
+func _process(delta):
+
+	if remote:
+		if global_position.distance_to(net_position) > 300.0:
+			global_position = net_position
+		global_position = global_position.lerp(net_position, 1.0 - exp(-14.0 * delta))
 
 
 func _physics_process(delta):
@@ -287,6 +354,7 @@ func take_damage(amount: float, from: Vector2, push: float = 420.0) -> bool:
 	health_changed.emit(health, max_health)
 	animator.hurt()
 	flash(Color(1.0, 0.35, 0.3))
+	NetSync.share_player_fx("hurt", [])
 	Sfx.play("player_hurt")
 	Pad.rumble(0.4, 0.7, 0.2)
 	var fx = get_tree().get_first_node_in_group("fx")

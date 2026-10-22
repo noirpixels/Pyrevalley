@@ -12,6 +12,8 @@ var damage: float
 var bounds: Rect2
 var hit = []
 var time: float = 0.0
+# A guest's copy of the host's wave: drawn, never hurts
+var visual_only: bool = false
 
 
 func _init(direction: float, dmg: float, arena: Rect2):
@@ -31,6 +33,8 @@ func _physics_process(delta):
 		return
 	var r = Rect2(global_position + Vector2(-LENGTH / 2.0, -HEIGHT), Vector2(LENGTH, HEIGHT))
 	for p in get_tree().get_nodes_in_group("players"):
+		if visual_only:
+			break
 		if p in hit or p.dead:
 			continue
 		var body = Rect2(p.global_position - Vector2(16, 92), Vector2(32, 92))

@@ -63,6 +63,7 @@ var home: Vector2
 var struck = []
 # A guest's copy of a host creature: shown, never simulated (net_sync.gd)
 var puppet: bool = false
+var net_position: Vector2
 
 var sprite: Sprite2D
 var glow: Sprite2D
@@ -129,6 +130,9 @@ func hurt_rect() -> Rect2:
 func _physics_process(delta):
 
 	if puppet:
+		time += delta
+		flash_timer = max(flash_timer - delta, 0.0)
+		global_position = global_position.lerp(net_position, 1.0 - exp(-16.0 * delta))
 		return
 	time += delta
 	state_timer -= delta
@@ -395,6 +399,7 @@ func die():
 		fx.burst(global_position + Vector2(0, -height / 2.0), Color(1.0, 0.5, 0.15), 26, 420.0)
 	drop_loot()
 	died_out.emit(self)
+	NetSync.creature_died(self)
 	var tween = create_tween()
 	tween.tween_property(sprite, "modulate", Color(1.0, 0.4, 0.1, 0.0), 0.45)
 	tween.tween_callback(hide)
@@ -408,6 +413,24 @@ func drop_loot():
 	for d in drops:
 		if randf() < d[1]:
 			spawner.drop_item(d[0], global_position + Vector2(0, -height / 2.0))
+
+
+# A guest's copy follows the host's numbers
+func puppet_to(at: Vector2, vx: float, face: float, new_state: int, hp: float, is_launched: bool):
+
+	if net_position == Vector2.ZERO or at.distance_to(global_position) > 400.0:
+		global_position = at
+	net_position = at
+	velocity.x = vx
+	facing = face
+	if new_state != state:
+		state = new_state
+		if state == State.WINDUP:
+			state_timer = windup_time
+	if hp < health:
+		flash_timer = 0.08
+	health = hp
+	launched = is_launched
 
 
 # Already dead when the world was built (killed before a reload)

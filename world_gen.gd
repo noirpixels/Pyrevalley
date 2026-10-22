@@ -373,11 +373,10 @@ static func door_exit(rows: Array, door: String) -> Array:
 		"D":
 			return [Vector2i(15, 15), Vector2i(14, 15), Vector2i(16, 15), Vector2i(17, 15)]
 		"U":
-			# A plain jump from a ledge right under the doorway clears it
+			# A plain jump from the ledge right under the doorway clears it
 			var out = []
 			for x in range(14, 18):
-				for y in range(0, 2):
-					out.append(Vector2i(x, y))
+				out.append(Vector2i(x, 0))
 			return out
 	return []
 

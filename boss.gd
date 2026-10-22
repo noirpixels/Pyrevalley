@@ -164,6 +164,7 @@ func add_warning(r: Rect2, seconds: float):
 
 	var t = Telegraph.new(r, seconds)
 	get_parent().add_child(t)
+	NetSync.creature_fx("warn", [r, seconds])
 
 
 func begin_strike():
@@ -177,6 +178,7 @@ func begin_strike():
 				var wave = Shockwave.new(dir, attack * 0.9, room.rect)
 				get_parent().add_child(wave)
 				wave.global_position = Vector2(global_position.x + dir * width * 0.4, floor_y)
+				NetSync.creature_fx("wave", [dir, wave.global_position, room.rect])
 			var game = get_tree().get_first_node_in_group("game")
 			if game:
 				game.shake(0.5)
@@ -235,6 +237,16 @@ func erupt_later(r: Rect2):
 	await get_tree().create_timer(ERUPTION_DELAY).timeout
 	if state == State.DEAD or not is_inside_tree():
 		return
+	show_eruption(r)
+	NetSync.creature_fx("erupt", [r])
+	for p in get_tree().get_nodes_in_group("players"):
+		var body = Rect2(p.global_position - Vector2(16, 92), Vector2(32, 92))
+		if not p.dead and r.intersects(body):
+			NetSync.hurt_player(p, attack, Vector2(r.get_center().x, r.end.y))
+
+
+func show_eruption(r: Rect2):
+
 	Sfx.play("eruption", -4.0)
 	var fx = get_tree().get_first_node_in_group("fx")
 	if fx:
@@ -242,10 +254,6 @@ func erupt_later(r: Rect2):
 			fx.burst(Vector2(r.get_center().x, r.end.y - k * 100.0), Color(1.0, 0.45, 0.1), 16, 520.0, 1.2)
 	var col = EruptionColumn.new(r)
 	get_parent().add_child(col)
-	for p in get_tree().get_nodes_in_group("players"):
-		var body = Rect2(p.global_position - Vector2(16, 92), Vector2(32, 92))
-		if not p.dead and r.intersects(body):
-			NetSync.hurt_player(p, attack, Vector2(r.get_center().x, r.end.y))
 
 
 # ============================================================

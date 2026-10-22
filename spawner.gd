@@ -37,6 +37,7 @@ func populate(in_game: Node):
 			if CREATURES.has(kind):
 				var c = CREATURES[kind].new()
 				c.setup(room, m["at"], "c" + id)
+				c.puppet = not Net.is_host()
 				room.add_child(c)
 				c.global_position = m["at"]
 				creatures.append(c)
@@ -63,6 +64,7 @@ func populate(in_game: Node):
 				if not GameState.boss_defeated and ResourceLoader.exists("res://boss.gd"):
 					var boss = load("res://boss.gd").new()
 					boss.setup(room, m["at"], "boss")
+					boss.puppet = not Net.is_host()
 					room.add_child(boss)
 					boss.global_position = m["at"]
 	regrow_forage()

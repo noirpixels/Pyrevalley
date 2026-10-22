@@ -25,7 +25,11 @@ func _init():
 func resume():
 
 	visible = false
-	get_tree().paused = false
+	var hud = get_tree().get_first_node_in_group("hud")
+	if hud:
+		hud.pause_world(false)
+	else:
+		get_tree().paused = false
 
 
 func quit_to_title():

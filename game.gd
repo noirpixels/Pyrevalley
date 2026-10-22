@@ -62,6 +62,7 @@ func _ready():
 	player.respawn_at(shrine_point())
 	player.health = GameState.health if GameState.health > 0.0 else GameState.max_health
 	player.died.connect(_on_player_died)
+	NetSync.enter_world(self)
 
 	RenderingServer.set_default_clear_color(Color(0.03, 0.025, 0.035))
 	camera = Camera2D.new()
@@ -153,6 +154,8 @@ func _process(delta):
 	if player == null:
 		return
 	update_room(false)
+	if NetSync.has_company() and Engine.get_process_frames() % 30 == 0:
+		refresh_active_rooms()
 	var zoom = ARENA_ZOOM if current_room and current_room.data["role"] == "boss" else 1.0
 	camera.zoom = camera.zoom.lerp(Vector2(zoom, zoom), 1.0 - exp(-3.0 * delta))
 	var target = camera_target(false)
@@ -213,20 +216,64 @@ func update_room(instant: bool):
 		GameState.visit(c)
 	if instant and camera:
 		camera.global_position = camera_target(true)
-	# Only the room Veyl is in and its neighbours keep running
-	for r in rooms:
-		var near = r == room or r.rect.grow(10.0).intersects(room.rect)
-		r.process_mode = Node.PROCESS_MODE_INHERIT if near else Node.PROCESS_MODE_DISABLED
+	refresh_active_rooms()
 	var music = "deep" if room.underground else "forest"
 	if room.data["role"] == "boss":
 		music = "boss"
 	Sfx.play_music(music)
 
 
+# Only rooms with a player in or next to them keep running (on the host,
+# guests' rooms count too, since the host runs every creature)
+func refresh_active_rooms():
+
+	var occupied = []
+	for p in get_tree().get_nodes_in_group("players"):
+		var r = room_at(p.global_position + Vector2(0, -40))
+		if r:
+			occupied.append(r)
+	for r in rooms:
+		var near = false
+		for o in occupied:
+			if r == o or r.rect.grow(10.0).intersects(o.rect):
+				near = true
+		r.process_mode = Node.PROCESS_MODE_INHERIT if near else Node.PROCESS_MODE_DISABLED
+
+
+# A host creature's warning or projectile, drawn on a guest's screen only
+func show_creature_fx(kind: String, args: Array):
+
+	match kind:
+		"warn":
+			add_child(load("res://telegraph.gd").new(args[0], args[1]))
+		"wave":
+			var wave = load("res://shockwave.gd").new(args[0], 0.0, args[2])
+			wave.visual_only = true
+			add_child(wave)
+			wave.global_position = args[1]
+		"glob":
+			var glob = load("res://ember_glob.gd").new()
+			glob.launch(args[0], args[1], 0.0)
+			glob.visual_only = true
+			add_child(glob)
+		"erupt":
+			var boss = NetSync.boss_node()
+			if boss:
+				boss.show_eruption(args[0])
+
+
 func _on_player_died():
 
 	await get_tree().create_timer(1.6).timeout
-	GameState.killed = {}
-	if spawner:
-		spawner.respawn_creatures()
+	# Only the host's world resets its creatures (a guest's are the host's)
+	if Net.is_host() and not NetSync.has_company():
+		GameState.killed = {}
+		if spawner:
+			spawner.respawn_creatures()
 	player.respawn_at(shrine_point())
+
+
+func _exit_tree():
+
+	NetSync.leave_world()
+	Engine.time_scale = 1.0

@@ -23,14 +23,17 @@ func interact(player: Node):
 	GameState.shrine_cell = cell
 	player.heal(player.max_health)
 	GameState.ink_map()
-	GameState.killed = {}
 	for key in GameState.taken.keys():
 		if key.begins_with("forage:"):
 			GameState.taken.erase(key)
 	var spawner = get_tree().get_first_node_in_group("spawner")
 	if spawner:
-		spawner.respawn_creatures()
 		spawner.regrow_forage()
+		# Creatures come back only in the host's world, and only when the
+		# host rests alone (not mid-fight for a friend)
+		if Net.is_host() and not NetSync.has_company():
+			GameState.killed = {}
+			spawner.respawn_creatures()
 	GameState.save_game(player)
 	Sfx.play("checkpoint")
 	var fx = get_tree().get_first_node_in_group("fx")

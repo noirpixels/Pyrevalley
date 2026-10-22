@@ -10,6 +10,8 @@ const RADIUS = 12.0
 var velocity: Vector2
 var damage: float
 var life: float = 3.0
+# A guest's copy of the host's gob: drawn, never hurts
+var visual_only: bool = false
 
 
 func launch(from: Vector2, to: Vector2, dmg: float):
@@ -33,7 +35,7 @@ func _physics_process(delta):
 		burst()
 		return
 	for p in get_tree().get_nodes_in_group("players"):
-		if p.dead:
+		if p.dead or visual_only:
 			continue
 		var body = Rect2(p.global_position - Vector2(16, 92), Vector2(32, 92))
 		if body.grow(RADIUS).has_point(global_position):

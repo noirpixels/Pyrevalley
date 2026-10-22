@@ -179,7 +179,7 @@ func drop_combo():
 # game can't slow for one of them, so only Veyl's pose holds instead.
 func hit_stop(duration: float):
 
-	if Net.has_method("online") and Net.online():
+	if NetSync.has_company():
 		player.animator.hold(duration)
 		return
 	Engine.time_scale = HIT_STOP_SCALE

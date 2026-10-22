@@ -253,7 +253,7 @@ func open_crafting(at_shrine: bool):
 	if crafting == null:
 		return
 	crafting.open(at_shrine)
-	get_tree().paused = true
+	pause_world(true)
 
 
 func close_panels():
@@ -261,7 +261,17 @@ func close_panels():
 	for p in [crafting, map_view, pause]:
 		if p:
 			p.visible = false
-	get_tree().paused = false
+	pause_world(false)
+
+
+# Alone, panels stop the world; with others playing it carries on, and
+# only Veyl stands still
+func pause_world(on: bool):
+
+	if Net.online():
+		set_blocked(on)
+	else:
+		get_tree().paused = on
 
 
 func _unhandled_input(event):
@@ -277,7 +287,7 @@ func _unhandled_input(event):
 			close_panels()
 		elif pause:
 			pause.visible = true
-			get_tree().paused = true
+			pause_world(true)
 	elif event.is_action_pressed("pack") and crafting:
 		get_viewport().set_input_as_handled()
 		if crafting.visible:
@@ -291,4 +301,4 @@ func _unhandled_input(event):
 		elif not panel_open():
 			map_view.visible = true
 			map_view.queue_redraw()
-			get_tree().paused = true
+			pause_world(true)

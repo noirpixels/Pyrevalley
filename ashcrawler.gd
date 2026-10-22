@@ -50,5 +50,6 @@ func begin_strike():
 	var from = global_position + Vector2(facing * width * 0.45, -height * 0.7)
 	glob.launch(from, target.global_position + Vector2(0, -40), attack)
 	get_parent().add_child(glob)
+	NetSync.creature_fx("glob", [from, target.global_position + Vector2(0, -40)])
 	Sfx.play("spit", -4.0)
 	squash = Vector2(1.2, 0.8)
