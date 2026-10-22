@@ -171,9 +171,6 @@ var last_swing_msec: int = -100000
 # "p2", pad.gd DUEL_ACTIONS), always face the opponent, and hit them
 # directly. The duel's own camera shows both.
 var input_prefix: String = ""
-# Side-on duel view (duel.gd): Veyl stays on the z = 0 plane, Up also
-# jumps, swings stand upright and reach counts height
-var plane_lock: bool = false
 var opponent: Node3D = null
 # Which tool bar slot is in hand (HELD_SLOTS)
 var held_slot: String = "weapon"
@@ -448,10 +445,7 @@ func _physics_process(delta):
 	elif not bot:
 		update_actions()
 
-	var jump_held = Input.is_action_pressed(input_prefix + "_jump" if input_prefix != "" else "jump")
-	if plane_lock:
-		jump_held = jump_held or Input.is_action_pressed(input_prefix + "_move_up" if input_prefix != "" else "move_up")
-	if jump_held and not input_blocked and not bot:
+	if Input.is_action_pressed(input_prefix + "_jump" if input_prefix != "" else "jump") and not input_blocked and not bot:
 
 		if is_on_floor():
 
@@ -474,8 +468,6 @@ func _physics_process(delta):
 	)
 	if bot:
 		direction = bot_move
-	if plane_lock:
-		direction.z = 0.0
 
 
 	if dash_timer > 0.0:
@@ -547,9 +539,6 @@ func _physics_process(delta):
 		update_interact_target()
 
 	move_and_slide()
-	if plane_lock:
-		global_position.z = 0.0
-		velocity.z = 0.0
 	if is_on_floor() and direction != Vector3.ZERO:
 		climb(direction)
 	update_blob_shadow()
@@ -847,10 +836,8 @@ func resolve_swing(move: Dictionary, aim: Vector3):
 	var duels = []
 	if opponent and not opponent.dead:
 		var offset = opponent.global_position - global_position
-		# Side-on, a launched opponent is out of reach of a ground swing
-		var reach = offset.length() if plane_lock else Vector2(offset.x, offset.z).length()
 		offset.y = 0
-		if reach <= attack_range + 1.5 and (offset.length() <= 0.01 or aim.angle_to(offset.normalized()) <= half_arc):
+		if offset.length() <= attack_range + 1.5 and (offset.length() <= 0.01 or aim.angle_to(offset.normalized()) <= half_arc):
 			duels.append(opponent)
 	var ring = get_tree().get_first_node_in_group("pvp_ring")
 	if ring and ring.contains(global_position) and opponent == null:
@@ -910,11 +897,6 @@ func show_slash(move: Dictionary, aim: Vector3, reach: float):
 			# Run the sweep toward the side of the screen the move swings to
 			var local_right = SpritePose.screen_x(self, slash.global_basis.x)
 			slash.sweep_dir = 1.0 if local_right * move["side"] >= 0.0 else -1.0
-	if plane_lock:
-		# Side-on the ground is edge-on, so the swing stands up at chest
-		# height, its arc in the plane the camera faces
-		slash.global_position = global_position + Vector3(0, 4.5, 0)
-		slash.global_basis = Basis.looking_at(aim) * Basis(Vector3.BACK, PI / 2.0)
 
 
 # Health damage first, then the separate push / spin / dizzy / launch
