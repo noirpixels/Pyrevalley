@@ -6,7 +6,8 @@ extends Node3D
 # (pad.gd DUEL_ACTIONS), a camera that keeps both in view, and the HUD.
 #   Player 1: WASD move, X / C strike, Q launch, E slam, G jump, Left Shift dodge
 #   Player 2: arrows move, / and Right Shift strike, , launch, . slam, L jump, ; dodge
-# Esc pauses.
+# Esc pauses. Tab swaps between the angled view and a side-on test view
+# (fighters locked to one plane, Up jumps).
 
 const PlayerScene = preload("res://player.tscn")
 const PvpRing = preload("res://pvp_ring.gd")
@@ -21,6 +22,9 @@ const VIEW_MIN = 30.0
 const VIEW_MAX = 64.0
 const CAMERA_PITCH = -35.0
 const CAMERA_YAW = 45.0
+# Side-on: looking along -Z, tipped down enough that the floor fills the
+# frame behind the fighters instead of an empty sky
+const SIDE_PITCH = -14.0
 const KEYS = [
 	"WASD move  ·  X / C strike  ·  Q launch  ·  E slam  ·  G jump  ·  L-Shift dodge",
 	"Arrows move  ·  / and R-Shift strike  ·  , launch  ·  . slam  ·  L jump  ·  ; dodge",
@@ -31,6 +35,9 @@ var wins = [0, 0]
 var round_number = 0
 var round_live = false
 var camera: Camera3D
+var side_on = true
+var ring: Node3D
+var view_hint: Label
 
 var bars: Array = []
 var pips: Array = []
@@ -105,7 +112,7 @@ func build_world():
 	floor_body.add_child(floor_shape)
 	add_child(floor_body)
 
-	var ring = PvpRing.new()
+	ring = PvpRing.new()
 	ring.arena_only = true
 	add_child(ring)
 
@@ -146,6 +153,31 @@ func build_fighters():
 		fighters.append(veyl)
 	fighters[0].opponent = fighters[1]
 	fighters[1].opponent = fighters[0]
+	set_view(side_on)
+
+
+func set_view(side: bool):
+
+	side_on = side
+	camera.rotation_degrees = Vector3(SIDE_PITCH, 0, 0) if side else Vector3(CAMERA_PITCH, CAMERA_YAW, 0)
+	for veyl in fighters:
+		veyl.plane_lock = side
+		# Moves and facing are screen-relative, so they follow the camera
+		veyl.iso_yaw_degrees = 0.0 if side else CAMERA_YAW
+		if side:
+			veyl.global_position.z = 0.0
+	# The near half of the ring wall would stand between the camera and
+	# the fight; it still blocks, it just isn't drawn
+	for segment in ring.get_children():
+		if segment is StaticBody3D:
+			for child in segment.get_children():
+				if child is Node3D:
+					child.visible = not (side and segment.position.z > 1.0)
+		elif segment is Label3D:
+			# The ring's title would sit right behind the fighters
+			segment.visible = not side
+	if view_hint:
+		view_hint.text = "TAB  ·  %s" % ("SIDE-ON  (Up jumps)" if side else "ANGLED")
 
 
 func _process(delta):
@@ -157,8 +189,18 @@ func _process(delta):
 	var focus = (a + b) / 2.0 + Vector3(0, 3.0, 0)
 	var gap = Vector2(a.x - b.x, a.z - b.z).length()
 	var view = clamp(gap * 1.25 + 16.0, VIEW_MIN, VIEW_MAX)
+	if side_on:
+		# Height matters side-on: frame both fighters top to bottom too
+		view = clamp(max(view, abs(a.y - b.y) * 1.3 + 16.0), VIEW_MIN, VIEW_MAX)
 	camera.size = lerp(camera.size, view, 1.0 - exp(-4.0 * delta))
-	camera.global_position = focus + camera.global_basis.z * 120.0
+	if side_on:
+		# Ease after launches rather than jerking up with them
+		var low = min(a.y, b.y)
+		focus.y = low + camera.size * 0.12
+		var target = focus + camera.global_basis.z * 120.0
+		camera.global_position = camera.global_position.lerp(target, 1.0 - exp(-6.0 * delta))
+	else:
+		camera.global_position = focus + camera.global_basis.z * 120.0
 
 
 # ============================================================
@@ -238,6 +280,10 @@ func quit_to_menu():
 
 func _unhandled_input(event):
 
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_TAB:
+		set_view(not side_on)
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("pause") and not end_panel.visible:
 		pause_panel.visible = not pause_panel.visible
 		get_tree().paused = pause_panel.visible
@@ -293,6 +339,15 @@ func build_hud():
 			keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		root.add_child(keys)
 	update_pips()
+
+	view_hint = UI.label("", 16, UI.MUTED)
+	view_hint.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	view_hint.offset_left = -200
+	view_hint.offset_right = 200
+	view_hint.offset_top = 24
+	view_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	root.add_child(view_hint)
+	set_view(side_on)
 
 	banner = UI.title("", 64, UI.EMBER)
 	UI.centered(banner)
