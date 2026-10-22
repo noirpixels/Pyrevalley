@@ -18,17 +18,17 @@ signal navigate(scene_path)
 # layer is <name>_glow.png); "size" scales its collision and weight.
 const CREATURES = [
 	# ---- Emberwood (prototype) ----
-	{"name": "Ember Wolf", "description": "A mysterious creature said to roam the outer valleys of Embervale.", "type": "Beast", "health": 80, "attack": 18, "defense": 12, "speed": 20, "rarity": "Uncommon", "drop": "Ember Fang", "drop2": "Wolf Hide", "drop2_chance": 0.6, "sprite": "res://Creatures/ember_wolf.png", "size": 1.0},
+	{"name": "Ember Wolf", "description": "A mysterious creature said to roam the outer valleys of Pyrevalley.", "type": "Beast", "health": 80, "attack": 18, "defense": 12, "speed": 20, "rarity": "Uncommon", "drop": "Ember Fang", "drop2": "Wolf Hide", "drop2_chance": 0.6, "sprite": "res://Creatures/ember_wolf.png", "size": 1.0},
 	{"name": "Mossling", "description": "A small bundle of living moss that wanders the Emberwood floor. Harmless, until something frightens it.", "type": "Nature", "health": 50, "attack": 10, "defense": 18, "speed": 12, "rarity": "Common", "drop": "Moss Fiber", "sprite": "res://Creatures/mossling.png", "size": 0.8},
 	{"name": "Ashcrawler", "description": "A low, armoured beast with embers smouldering between its plates. It is rarely seen outside the Deep Forest.", "type": "Beast", "health": 110, "attack": 22, "defense": 8, "speed": 10, "rarity": "Rare", "drop": "Ash Core", "sprite": "res://Creatures/ashcrawler.png", "size": 1.1},
 	{"name": "The Ashbound", "description": "Something vast and burning, chained to the heart of Emberwood. The creatures are not fleeing the forest. They are fleeing it.", "type": "Abomination", "health": 650, "attack": 32, "defense": 20, "speed": 14, "rarity": "Legendary", "drop": "", "sprite": "res://Creatures/ashbound.png", "size": 3.2, "boss": true},
 
-	# ---- Rest of Embervale (codex lore, not in the prototype yet) ----
-	{"name": "Ashfang", "description": "A fierce beast that hunts beneath the ancient forests of Embervale.", "type": "Beast", "health": 100, "attack": 24, "defense": 16, "speed": 18, "rarity": "Rare"},
+	# ---- Rest of Pyrevalley (codex lore, not in the prototype yet) ----
+	{"name": "Ashfang", "description": "A fierce beast that hunts beneath the ancient forests of Pyrevalley.", "type": "Beast", "health": 100, "attack": 24, "defense": 16, "speed": 18, "rarity": "Rare"},
 	{"name": "Glowmoth", "description": "A strange glowing creature that appears near ancient ruins after sunset.", "type": "Insect", "health": 45, "attack": 10, "defense": 8, "speed": 28, "rarity": "Rare"},
 	{"name": "Stoneback", "description": "A slow-moving guardian covered in ancient stone plates.", "type": "Guardian", "health": 150, "attack": 20, "defense": 35, "speed": 8, "rarity": "Rare"},
-	{"name": "Ember Serpent", "description": "A fiery serpent that coils around the volcanic cliffs of Embervale.", "type": "Serpent", "health": 110, "attack": 30, "defense": 14, "speed": 25, "rarity": "Epic"},
-	{"name": "Frostwing", "description": "A rare flying creature found near the frozen peaks beyond Embervale.", "type": "Flying", "health": 75, "attack": 22, "defense": 10, "speed": 35, "rarity": "Epic"},
+	{"name": "Ember Serpent", "description": "A fiery serpent that coils around the volcanic cliffs of Pyrevalley.", "type": "Serpent", "health": 110, "attack": 30, "defense": 14, "speed": 25, "rarity": "Epic"},
+	{"name": "Frostwing", "description": "A rare flying creature found near the frozen peaks beyond Pyrevalley.", "type": "Flying", "health": 75, "attack": 22, "defense": 10, "speed": 35, "rarity": "Epic"},
 	{"name": "Moonhare", "description": "A mysterious rabbit said to appear under the light of a full moon.", "type": "Beast", "health": 40, "attack": 8, "defense": 6, "speed": 40, "rarity": "Uncommon"},
 	{"name": "Moss Giant", "description": "An ancient creature covered in vines, moss, and tiny flowers.", "type": "Giant", "health": 200, "attack": 28, "defense": 30, "speed": 6, "rarity": "Epic"},
 	{"name": "Cinder Crow", "description": "A clever bird that nests near warm volcanic rocks.", "type": "Flying", "health": 55, "attack": 14, "defense": 7, "speed": 32, "rarity": "Uncommon"},

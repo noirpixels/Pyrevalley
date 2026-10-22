@@ -57,7 +57,7 @@ theme_override_constants/separation = 25
 [node name="GameLabel" type="Label" parent="VBoxContainer" unique_id=1843815275]
 layout_mode = 2
 theme_override_font_sizes/font_size = 32
-text = "EMBERVALE"
+text = "PYREVALLEY"
 horizontal_alignment = 1
 
 [node name="CreatorLabel" type="Label" parent="VBoxContainer" unique_id=49709558]

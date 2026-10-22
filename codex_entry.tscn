@@ -61,7 +61,7 @@ offset_top = 408.0
 offset_right = 926.0
 offset_bottom = 576.0
 theme_override_font_sizes/font_size = 22
-text = "A mysterious creature said to roam the outer valleys of Embervale. Few travelers have ever seen one up close."
+text = "A mysterious creature said to roam the outer valleys of Pyrevalley. Few travelers have ever seen one up close."
 autowrap_mode = 3
 
 [node name="BackButton" type="Button" parent="." unique_id=1024541958]

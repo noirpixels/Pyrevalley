@@ -1,7 +1,7 @@
 extends Control
 
 # After The Ashbound falls:
-#   "THE FOREST IS QUIET."  ->  "EMBERVALE / PROTOTYPE COMPLETE"
+#   "THE FOREST IS QUIET."  ->  "PYREVALLEY / PROTOTYPE COMPLETE"
 # Then keep exploring the same forest, start a new one, or leave.
 
 signal keep_exploring_pressed
@@ -40,7 +40,7 @@ func _ready():
 	final.visible = false
 	add_child(final)
 
-	var title = UI.title("EMBERVALE", 80, UI.EMBER)
+	var title = UI.title("PYREVALLEY", 80, UI.EMBER)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	final.add_child(title)
 

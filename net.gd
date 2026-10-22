@@ -215,7 +215,7 @@ func register(requested_name: String, protocol: int):
 		return
 	var id = multiplayer.get_remote_sender_id()
 	if protocol != PROTOCOL:
-		refuse.rpc_id(id, "That game is running a different version of Embervale.")
+		refuse.rpc_id(id, "That game is running a different version of Pyrevalley.")
 		get_tree().create_timer(0.5).timeout.connect(multiplayer.multiplayer_peer.disconnect_peer.bind(id))
 		return
 
@@ -343,7 +343,7 @@ func _process(delta):
 		announce_timer -= delta
 		if announce_timer <= 0.0:
 			announce_timer = ANNOUNCE_EVERY
-			var info = {"game": "Embervale", "protocol": PROTOCOL, "name": player_name, "players": roster.size(), "max": MAX_PLAYERS}
+			var info = {"game": "Pyrevalley", "protocol": PROTOCOL, "name": player_name, "players": roster.size(), "max": MAX_PLAYERS}
 			discovery.put_packet(JSON.stringify(info).to_utf8_buffer())
 		return
 
@@ -352,7 +352,7 @@ func _process(delta):
 		var packet = discovery.get_packet().get_string_from_utf8()
 		var ip = discovery.get_packet_ip()
 		var info = JSON.parse_string(packet)
-		if typeof(info) != TYPE_DICTIONARY or info.get("game") != "Embervale":
+		if typeof(info) != TYPE_DICTIONARY or info.get("game") != "Pyrevalley":
 			continue
 		if int(info.get("protocol", 0)) != PROTOCOL:
 			continue
@@ -399,7 +399,7 @@ func _upnp_open():
 	var address = ""
 	if u.discover(2000, 2) != UPNP.UPNP_RESULT_SUCCESS or u.get_gateway() == null or not u.get_gateway().is_valid_gateway():
 		status = "Your router didn't answer (UPnP). Online friends need port %d (UDP) forwarded to this computer." % PORT
-	elif u.add_port_mapping(PORT, PORT, "Embervale", "UDP") != UPNP.UPNP_RESULT_SUCCESS:
+	elif u.add_port_mapping(PORT, PORT, "Pyrevalley", "UDP") != UPNP.UPNP_RESULT_SUCCESS:
 		status = "Your router refused to open port %d. Forward it (UDP) by hand for online play." % PORT
 	else:
 		address = u.query_external_address()

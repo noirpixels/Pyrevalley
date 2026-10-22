@@ -37,5 +37,5 @@ const ALLOW = [
 # Names nobody may take
 const RESERVED = [
 	"host", "admin", "administrator", "moderator", "mod", "server", "system",
-	"embershade", "embervale", "developer", "dev", "staff", "official",
+	"embershade", "embervale", "pyrevalley", "developer", "dev", "staff", "official",
 ]

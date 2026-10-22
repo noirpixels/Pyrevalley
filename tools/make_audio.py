@@ -1,4 +1,4 @@
-"""Synthesizes Embervale's sound effects, ambience and music into audio/.
+"""Synthesizes Pyrevalley's sound effects, ambience and music into audio/.
 
 Pure Python (no dependencies). Re-run to regenerate:  python3 tools/make_audio.py
 Replace any file in audio/ with a recorded sound of the same name to upgrade it.

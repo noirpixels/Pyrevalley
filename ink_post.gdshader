@@ -1,7 +1,7 @@
 shader_type spatial;
 render_mode unshaded, depth_test_disabled, depth_draw_never, cull_disabled, shadows_disabled, fog_disabled;
 
-// Embervale's graphic-novel look, drawn over the opaque scene by a
+// Pyrevalley's graphic-novel look, drawn over the opaque scene by a
 // full-screen quad on the camera (ink_post.gd):
 //   - ink outlines wherever depth jumps (silhouettes of trees, rocks,
 //     creatures, Veyl)

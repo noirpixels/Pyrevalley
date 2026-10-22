@@ -109,7 +109,7 @@ text = "Ember Wolf"
 custom_maximum_size = Vector2(400, 200)
 layout_mode = 2
 theme_override_font_sizes/font_size = 20
-text = "A mysterious creature said to roam the outer valleys of Embervale."
+text = "A mysterious creature said to roam the outer valleys of Pyrevalley."
 autowrap_mode = 3
 
 [node name="WeaponsList" type="VBoxContainer" parent="CodexScroll/CategoryList" unique_id=2037858457]

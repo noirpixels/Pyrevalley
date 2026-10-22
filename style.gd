@@ -1,6 +1,6 @@
 extends Node
 
-# Embervale's look for every UI screen, applied to the root window so the
+# Pyrevalley's look for every UI screen, applied to the root window so the
 # code-built panels and the scene-built menus (main menu, codex, settings,
 # credits) all share it: inked dark panels with an ember edge, carved
 # Cinzel capitals for names and titles, Alegreya for reading.
