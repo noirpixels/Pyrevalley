@@ -11,6 +11,7 @@ func _ready():
 
 	add_to_group("interactable")
 	sprite = Sprite2D.new()
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.texture = load("res://NPCs/rowan.png")
 	sprite.centered = false
 	sprite.offset = Vector2(-sprite.texture.get_width() / 2.0, -sprite.texture.get_height())

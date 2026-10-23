@@ -89,16 +89,14 @@ func collect():
 func _draw():
 
 	var bob = Vector2(0, sin(time * 3.0) * 3.0) if resting else Vector2.ZERO
-	var ink = Color(0.035, 0.028, 0.045)
 	var c: Color = Items.COLORS.get(item, Color(0.9, 0.8, 0.6))
-	draw_circle(bob, 16.0, Color(c.r, c.g, c.b, 0.15))
+	InkDraw.glow(self, bob, 26.0, Color(1.0, 0.75, 0.4, 0.18 + 0.06 * sin(time * 3.0)))
 	if item == "Branch":
-		draw_line(bob + Vector2(-14, 6), bob + Vector2(14, -6), ink, 7.0)
-		draw_line(bob + Vector2(-14, 6), bob + Vector2(14, -6), c, 4.0)
-		draw_line(bob + Vector2(2, 0), bob + Vector2(8, -10), c, 3.0)
+		InkDraw.line(self, bob + Vector2(-15, 6), bob + Vector2(15, -6), 8.0, InkDraw.INK, 1.0)
+		InkDraw.line(self, bob + Vector2(-13, 5), bob + Vector2(13, -5), 4.5, c, 1.0)
+		InkDraw.line(self, bob + Vector2(1, 0), bob + Vector2(8, -11), 4.0, InkDraw.INK, 2.0)
 	else:
 		var pts = PackedVector2Array([bob + Vector2(0, -11), bob + Vector2(10, -2), bob + Vector2(5, 10), bob + Vector2(-6, 9), bob + Vector2(-10, -3)])
-		draw_colored_polygon(pts, c)
-		pts.append(pts[0])
-		draw_polyline(pts, ink, 2.5)
-		draw_line(bob + Vector2(-3, -6), bob + Vector2(3, -3), Color(1, 1, 1, 0.6), 2.0)
+		InkDraw.fill(self, pts, c)
+		InkDraw.outline(self, pts, 2.6, InkDraw.INK, 3.0)
+		InkDraw.line(self, bob + Vector2(-4, -5), bob + Vector2(2, -3), 2.0, Color(1, 1, 1, 0.6), 4.0)
