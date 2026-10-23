@@ -1,0 +1,135 @@
+[gd_scene format=3 uid="uid://d01lnfcouolp"]
+
+[ext_resource type="Script" uid="uid://lkylkd8yx76s" path="res://codex.gd" id="1_5a3cr"]
+[ext_resource type="Texture2D" uid="uid://dndmp35s4w5rs" path="res://placeholdercodeximage.png" id="2_as55l"]
+
+[node name="Codex" type="Control" unique_id=196093802]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_5a3cr")
+
+[node name="CodexTitle" type="Label" parent="." unique_id=380021433]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -96.0
+offset_top = -20.0
+offset_right = 96.0
+offset_bottom = 68.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 64
+text = "Codex"
+horizontal_alignment = 1
+
+[node name="CategoryButtons" type="HBoxContainer" parent="." unique_id=483407759]
+layout_mode = 0
+offset_left = 190.0
+offset_top = 48.0
+offset_right = 980.0
+offset_bottom = 103.0
+theme_override_constants/separation = 10
+
+[node name="CreaturesButton" type="Button" parent="CategoryButtons" unique_id=1863899670]
+custom_minimum_size = Vector2(150, 55)
+layout_mode = 2
+text = "CREATURES"
+
+[node name="WeaponsButton" type="Button" parent="CategoryButtons" unique_id=187737376]
+custom_minimum_size = Vector2(150, 55)
+layout_mode = 2
+text = "WEAPONS"
+
+[node name="PlantsButton" type="Button" parent="CategoryButtons" unique_id=1701501306]
+custom_minimum_size = Vector2(150, 55)
+layout_mode = 2
+text = "PLANTS"
+
+[node name="NPCsButton" type="Button" parent="CategoryButtons" unique_id=110321526]
+custom_minimum_size = Vector2(150, 55)
+layout_mode = 2
+text = "NPCs"
+
+[node name="LocationsButton" type="Button" parent="CategoryButtons" unique_id=1823113865]
+custom_minimum_size = Vector2(150, 55)
+layout_mode = 2
+text = "LOCATIONS"
+
+[node name="CodexScroll" type="ScrollContainer" parent="." unique_id=180600951]
+custom_minimum_size = Vector2(700, 500)
+layout_mode = 0
+offset_left = 226.0
+offset_top = 106.0
+offset_right = 926.0
+offset_bottom = 606.0
+size_flags_vertical = 3
+
+[node name="CategoryList" type="VBoxContainer" parent="CodexScroll" unique_id=623295074]
+layout_mode = 2
+
+[node name="CreaturesList" type="VBoxContainer" parent="CodexScroll/CategoryList" unique_id=373126121]
+custom_minimum_size = Vector2(680, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Entry1" type="PanelContainer" parent="CodexScroll/CategoryList/CreaturesList" unique_id=32487727]
+custom_minimum_size = Vector2(650, 200)
+layout_mode = 2
+
+[node name="Button1" type="Button" parent="CodexScroll/CategoryList/CreaturesList/Entry1" unique_id=430184767]
+layout_mode = 2
+
+[node name="HBoxContainer" type="HBoxContainer" parent="CodexScroll/CategoryList/CreaturesList/Entry1" unique_id=345788800]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 25
+
+[node name="Image" type="TextureRect" parent="CodexScroll/CategoryList/CreaturesList/Entry1/HBoxContainer" unique_id=1311252133]
+custom_minimum_size = Vector2(180, 180)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("2_as55l")
+expand_mode = 1
+
+[node name="Info" type="VBoxContainer" parent="CodexScroll/CategoryList/CreaturesList/Entry1/HBoxContainer" unique_id=995433762]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 12
+
+[node name="Name" type="Label" parent="CodexScroll/CategoryList/CreaturesList/Entry1/HBoxContainer/Info" unique_id=727586238]
+layout_mode = 2
+theme_override_font_sizes/font_size = 32
+text = "Ember Wolf"
+
+[node name="Description" type="Label" parent="CodexScroll/CategoryList/CreaturesList/Entry1/HBoxContainer/Info" unique_id=629397829]
+custom_maximum_size = Vector2(400, 200)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "A mysterious creature said to roam the outer valleys of Embervale."
+autowrap_mode = 3
+
+[node name="WeaponsList" type="VBoxContainer" parent="CodexScroll/CategoryList" unique_id=2037858457]
+layout_mode = 2
+
+[node name="BackButton" type="Button" parent="." unique_id=203972247]
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -40.5
+offset_top = -47.0
+offset_right = 40.5
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 28
+text = "BACK"
+
+[connection signal="pressed" from="CategoryButtons/CreaturesButton" to="." method="_on_creatures_button_pressed"]
+[connection signal="pressed" from="CategoryButtons/WeaponsButton" to="." method="_on_weapons_button_pressed"]
+[connection signal="pressed" from="BackButton" to="." method="_on_back_button_pressed"]

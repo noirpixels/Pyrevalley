@@ -1,0 +1,83 @@
+[gd_scene format=3 uid="uid://beejm67j6puu6"]
+
+[ext_resource type="Script" uid="uid://d1gde83bqlrks" path="res://codex_entry.gd" id="1_r736h"]
+[ext_resource type="Texture2D" uid="uid://dndmp35s4w5rs" path="res://placeholdercodeximage.png" id="2_oqqf1"]
+
+[node name="CodexEntry" type="Control" unique_id=1694524972]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_r736h")
+
+[node name="EntryTitle" type="Label" parent="." unique_id=229165489]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 0.5
+anchor_right = 0.52000004
+offset_left = -148.0
+offset_top = 2.0
+offset_right = 237.95996
+offset_bottom = 90.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 64
+text = "EMBER WOLF"
+horizontal_alignment = 1
+
+[node name="TextureRect" type="TextureRect" parent="." unique_id=717924434]
+custom_minimum_size = Vector2(400, 300)
+layout_mode = 1
+offset_left = 416.0
+offset_top = 86.0
+offset_right = 816.0
+offset_bottom = 400.0
+texture = ExtResource("2_oqqf1")
+expand_mode = 1
+
+[node name="EntryStats" type="Label" parent="." unique_id=4650773]
+custom_maximum_size = Vector2(500, -1)
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 376.0
+offset_bottom = 343.0
+theme_override_font_sizes/font_size = 37
+text = "TYPE: Beast
+HEALTH: 80
+ATTACK: 18
+DEFENSE: 12
+SPEED: 20
+RARITY: Uncommon"
+autowrap_mode = 3
+
+[node name="EntryDescription" type="Label" parent="." unique_id=11261521]
+custom_minimum_size = Vector2(600, 100)
+custom_maximum_size = Vector2(-1, 168)
+layout_mode = 0
+offset_left = 226.0
+offset_top = 408.0
+offset_right = 926.0
+offset_bottom = 576.0
+theme_override_font_sizes/font_size = 22
+text = "A mysterious creature said to roam the outer valleys of Embervale. Few travelers have ever seen one up close."
+autowrap_mode = 3
+
+[node name="BackButton" type="Button" parent="." unique_id=1024541958]
+custom_minimum_size = Vector2(300, 65)
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -300.0
+offset_top = -65.0
+offset_right = 300.0
+grow_horizontal = 2
+grow_vertical = 0
+theme_override_font_sizes/font_size = 28
+text = "BACK"
+
+[connection signal="pressed" from="BackButton" to="." method="_on_back_button_pressed"]

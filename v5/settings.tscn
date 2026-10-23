@@ -1,0 +1,77 @@
+[gd_scene format=3 uid="uid://ds5qdy02i5nwv"]
+
+[ext_resource type="Script" uid="uid://de0p0lcuhdo8a" path="res://settings_menu.gd" id="1_x2hje"]
+
+[node name="Settings" type="Control" unique_id=196490878]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="SettingsTitle" type="Label" parent="." unique_id=429962802]
+layout_mode = 1
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -52.5
+offset_right = 52.5
+offset_bottom = 23.0
+grow_horizontal = 2
+theme_override_font_sizes/font_size = 64
+text = "SETTINGS"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BackButton" type="Button" parent="." unique_id=2014554118]
+custom_minimum_size = Vector2(300, 65)
+layout_mode = 0
+offset_left = 420.0
+offset_top = 564.0
+offset_right = 720.0
+offset_bottom = 629.0
+theme_override_font_sizes/font_size = 28
+text = "BACK"
+
+[node name="SettingsMenu" type="VBoxContainer" parent="." unique_id=1052496779]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -52.5
+offset_top = -109.5
+offset_right = 52.5
+offset_bottom = 109.5
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 25
+script = ExtResource("1_x2hje")
+
+[node name="MusicLabel" type="Label" parent="SettingsMenu" unique_id=358461783]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Music"
+
+[node name="MusicButton" type="Button" parent="SettingsMenu" unique_id=1087940979]
+custom_minimum_size = Vector2(300, 65)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "ON"
+
+[node name="SoundLabel" type="Label" parent="SettingsMenu" unique_id=689645468]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Sound Effects"
+
+[node name="SoundButton" type="Button" parent="SettingsMenu" unique_id=2003398046]
+custom_minimum_size = Vector2(300, 65)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "ON"
+
+[connection signal="pressed" from="BackButton" to="SettingsMenu" method="_on_back_button_pressed"]
+[connection signal="pressed" from="SettingsMenu/MusicButton" to="SettingsMenu" method="_on_music_button_pressed"]
+[connection signal="pressed" from="SettingsMenu/SoundButton" to="SettingsMenu" method="_on_sound_button_pressed"]
