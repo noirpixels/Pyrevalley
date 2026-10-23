@@ -116,15 +116,18 @@ func _init(textures: Dictionary):
 	viewport.size = SIZE
 	viewport.transparent_bg = true
 	viewport.disable_3d = true
-	viewport.snap_2d_transforms_to_pixel = true
-	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_NEAREST
+	viewport.canvas_item_default_texture_filter = Viewport.DEFAULT_CANVAS_ITEM_TEXTURE_FILTER_LINEAR
 	viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(viewport)
 	texture = viewport.get_texture()
 
 	var held = HeldArt.get_art("Sword", "Rusted")
 	for key in textures:
-		if textures[key]:
+		if key == "right":
+			# The side view, the one the game plays in, is drawn in ink
+			rigs[key] = build_ink_rig(held)
+			viewport.add_child(rigs[key]["root"])
+		elif textures[key]:
 			rigs[key] = build_rig(RIGS[key], textures[key], held)
 			viewport.add_child(rigs[key]["root"])
 
@@ -464,6 +467,63 @@ func build_rig(def: Dictionary, source: Texture2D, held: Dictionary) -> Dictiona
 		"arms": arms, "legs": legs, "leg_rest": leg_rest, "sword": sword,
 		"side": side, "rest_blade": def["rest_blade"], "blade_length": held["length"],
 	}
+
+
+# The side view in ink (veyl_ink.gd), built to the same shape as
+# build_rig's so posing and swings work unchanged
+func build_ink_rig(held: Dictionary) -> Dictionary:
+
+	var root = Node2D.new()
+	root.position = Vector2((SIZE.x - VeylInk.W) / 2, SIZE.y - VeylInk.H)
+
+	var legs = []
+	var leg_rest = [VeylInk.HIP, VeylInk.HIP]
+	for i in 2:
+		var leg = VeylInk.Leg.new()
+		leg.position = VeylInk.HIP
+		legs.append(leg)
+	# The far leg is darker and drawn first
+	legs[1].modulate = Color(0.6, 0.6, 0.7)
+	root.add_child(legs[1])
+	root.add_child(legs[0])
+
+	var body = Node2D.new()
+	body.position = VeylInk.HIP
+	root.add_child(body)
+	var scarf = VeylInk.Scarf.new()
+	scarf.position = VeylInk.NECK - VeylInk.HIP
+	var torso = VeylInk.Torso.new()
+	var head = VeylInk.Head.new()
+	head.position = VeylInk.NECK - VeylInk.HIP
+	var arm = VeylInk.Arm.new()
+	arm.position = VeylInk.SHOULDER - VeylInk.HIP
+	# Tail behind the body, the wrap over the neck: the scarf draws both,
+	# so it goes between torso and head
+	body.add_child(torso)
+	body.add_child(scarf)
+	body.add_child(head)
+	body.add_child(arm)
+
+	var sword = Sprite2D.new()
+	sword.texture = held["texture"]
+	sword.centered = false
+	sword.offset = -held["grip"]
+	sword.position = VeylInk.HAND - VeylInk.SHOULDER
+	sword.show_behind_parent = true
+	arm.add_child(sword)
+
+	return {
+		"root": root, "body": body, "body_rest": VeylInk.HIP, "head": head, "torso": torso,
+		"arms": [arm], "legs": legs, "leg_rest": leg_rest, "sword": sword, "scarf": scarf,
+		"side": true, "rest_blade": RIGS["right"]["rest_blade"], "blade_length": held["length"],
+	}
+
+
+# How Veyl is moving, in the puppet's own space (facing right), for the scarf
+func set_motion(velocity: Vector2):
+
+	if rig.has("scarf"):
+		rig["scarf"].motion = velocity
 
 
 # A Node2D that turns around pivot (source pixels), holding the part's image

@@ -49,6 +49,7 @@ func _init(body: CharacterBody2D, tint: Color = Color.WHITE):
 	sprite.centered = false
 	sprite.offset = Vector2(-VeylPuppet.SIZE.x / 2.0, -VeylPuppet.SIZE.y)
 	sprite.modulate = tint
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	add_child(sprite)
 	scale = Vector2(SCALE, SCALE)
 
@@ -87,6 +88,7 @@ func _process(delta):
 	else:
 		step_phase = 0.0
 
+	puppet.set_motion(Vector2(player.velocity.x * facing, player.velocity.y))
 	puppet.animate(delta, step_phase, on_floor and speed > 30.0 and not player.dead, not on_floor, time)
 
 	if on_floor and not was_on_floor and not player.dead:
@@ -155,6 +157,7 @@ func spawn_ghost():
 	ghost.centered = false
 	ghost.offset = sprite.offset
 	ghost.flip_h = sprite.flip_h
+	ghost.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	ghost.modulate = Color(1.0, 0.55, 0.25, 0.45)
 	ghost.z_index = -1
 	player.get_parent().add_child(ghost)
