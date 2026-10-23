@@ -94,6 +94,7 @@ func _ready():
 	add_child(col)
 
 	sprite = Sprite2D.new()
+	sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	sprite.texture = load(sprite_path)
 	sprite.centered = false
 	sprite.offset = Vector2(-sprite.texture.get_width() / 2.0, -sprite.texture.get_height())
@@ -102,6 +103,7 @@ func _ready():
 	var glow_path = sprite_path.replace(".png", "_glow.png")
 	if ResourceLoader.exists(glow_path):
 		glow = Sprite2D.new()
+		glow.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		glow.texture = load(glow_path)
 		glow.centered = false
 		glow.offset = sprite.offset

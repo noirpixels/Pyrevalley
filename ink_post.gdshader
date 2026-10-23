@@ -5,7 +5,7 @@ shader_type canvas_item;
 //   - a muted, cold palette in which only ember oranges keep their colour
 //   - soft tonal bands, like flat washes of ink
 //   - ink lines where brightness jumps (silhouettes against the backdrop)
-//   - cross-hatching in the darks, paper grain and a ragged vignette
+//   - paper grain and a ragged vignette
 // The HUD draws on a higher layer and stays clean.
 
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
@@ -15,13 +15,12 @@ uniform vec3 light_tint = vec3(1.08, 1.02, 0.9);
 uniform float world_saturation = 0.5;
 uniform float ember_saturation = 1.25;
 uniform float band_strength = 0.35;
-uniform float edge_strength = 0.6;
-uniform float hatch_strength = 0.35;
-uniform float grain = 0.05;
-uniform float vignette = 0.6;
+uniform float edge_strength = 0.35;
+uniform float grain = 0.06;
+uniform float vignette = 0.5;
 uniform float intensity = 0.0;
 uniform vec4 flash = vec4(1.0, 0.9, 0.7, 0.0);
-// World offset of the camera, so hatching sticks to the world
+// World offset of the camera, so the paper sticks to the world
 uniform vec2 camera_px = vec2(0.0);
 
 float hash(vec2 p) {
@@ -74,15 +73,13 @@ void fragment() {
 	float edge = smoothstep(0.12, 0.3, length(vec2(gx, gy)));
 	col = mix(col, ink, edge * edge_strength * (1.0 - ember));
 
-	// Hatching in the darks, pinned to the world
+	// Paper: a still tooth and faint fibres, pinned to the world so it
+	// doesn't crawl. (Hatching now lives in the ground itself.)
 	vec2 world = FRAGCOORD.xy + camera_px;
-	float wobble = noise(world / 40.0) * 0.35;
-	float h1 = abs(fract((world.x + world.y) / 9.0 + wobble) - 0.5);
-	float hatch = (1.0 - smoothstep(0.1, 0.18, h1)) * (1.0 - smoothstep(0.06, 0.2, lum));
-	col = mix(col, ink, hatch * hatch_strength * (1.0 - ember));
-
-	float g = hash(floor(FRAGCOORD.xy) + floor(TIME * 12.0));
-	col *= 1.0 + (g - 0.5) * grain;
+	float tooth = noise(world / 2.5) * 0.6 + noise(world / 11.0) * 0.4;
+	float fibre = smoothstep(0.62, 0.7, noise(vec2(world.x / 90.0 + world.y / 300.0, world.y / 3.0)));
+	col *= 1.0 + (tooth - 0.5) * grain - fibre * grain * 0.6;
+	col = mix(col, col * vec3(1.04, 1.0, 0.93), 0.5);
 
 	vec2 c = uv - 0.5;
 	c.x *= SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;

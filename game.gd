@@ -94,6 +94,8 @@ func add_backdrop():
 		parallax.z_index = z
 		z += 1
 		var sprite = Sprite2D.new()
+		# Painted at 1920 wide and drawn smaller, so filter it smoothly
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		sprite.texture = load("res://Menu/%s.png" % l[0])
 		sprite.centered = false
 		sprite.scale = Vector2(l[2], l[2])

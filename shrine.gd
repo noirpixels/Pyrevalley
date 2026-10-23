@@ -52,26 +52,51 @@ func _process(delta):
 
 func _draw():
 
-	var ink = Color(0.035, 0.028, 0.045)
-	# Warm light on the ground around it
-	for i in 6:
-		var r = 150.0 - i * 22.0
-		draw_circle(Vector2(0, -40), r, Color(1.0, 0.45, 0.12, 0.035 + i * 0.012))
-	# Plinth and basin
-	var stone = Color(0.3, 0.28, 0.32)
-	var plinth = PackedVector2Array([Vector2(-26, 0), Vector2(26, 0), Vector2(18, -46), Vector2(-18, -46)])
-	draw_colored_polygon(plinth, stone)
-	var basin = PackedVector2Array([Vector2(-40, -46), Vector2(40, -46), Vector2(30, -66), Vector2(-30, -66)])
-	draw_colored_polygon(basin, stone.lightened(0.15))
-	plinth.append(plinth[0])
-	basin.append(basin[0])
-	draw_polyline(plinth, ink, 3.0)
-	draw_polyline(basin, ink, 3.0)
-	# Flame: a few flickering tongues
+	# Warm light on the ground and the air around the flame
+	InkDraw.glow(self, Vector2(0, -60), 190.0, Color(1.0, 0.45, 0.12, 0.3 + 0.04 * sin(time * 3.0)))
+	var stone = Color(0.34, 0.31, 0.32)
+	var dark = stone.darkened(0.35)
+
+	# A broad foot stone, a pillar of two blocks and a carved bowl
+	var foot = PackedVector2Array([Vector2(-34, 0), Vector2(34, 0), Vector2(29, -10), Vector2(-29, -10)])
+	var lower = PackedVector2Array([Vector2(-20, -10), Vector2(20, -10), Vector2(17, -30), Vector2(-17, -30)])
+	var upper = PackedVector2Array([Vector2(-16, -30), Vector2(16, -30), Vector2(14, -46), Vector2(-14, -46)])
+	var bowl = PackedVector2Array([Vector2(-38, -58), Vector2(38, -58), Vector2(32, -50), Vector2(18, -45), Vector2(-18, -45), Vector2(-32, -50)])
+	for part in [foot, lower, upper, bowl]:
+		InkDraw.fill(self, part, stone)
+	# Shade on the side away from the flame's lean, and a lit rim on the bowl
+	InkDraw.fill(self, PackedVector2Array([Vector2(8, -10), Vector2(20, -10), Vector2(17, -30), Vector2(6, -30)]), dark)
+	InkDraw.fill(self, PackedVector2Array([Vector2(6, -30), Vector2(16, -30), Vector2(14, -46), Vector2(5, -46)]), dark)
+	InkDraw.line(self, Vector2(-36, -57), Vector2(36, -57), 3.0, Color(1.0, 0.6, 0.25, 0.8), 4.0)
+	# Carved rings and a couple of cracks
+	InkDraw.line(self, Vector2(-12, -38), Vector2(12, -38), 1.6, InkDraw.INK, 5.0)
+	InkDraw.line(self, Vector2(-9, -20), Vector2(-3, -14), 1.4, InkDraw.INK, 6.0)
+	InkDraw.line(self, Vector2(22, -5), Vector2(27, -2), 1.4, InkDraw.INK, 7.0)
+	for part in [foot, lower, upper, bowl]:
+		InkDraw.outline(self, part, 3.0, InkDraw.INK, part[0].y)
+
+	# The flame: three tongues that lick and sway, outer one inked
 	for i in 3:
-		var sway = sin(time * (5.0 + i) + i * 2.0) * 5.0
-		var hgt = 46.0 + sin(time * 7.0 + i) * 8.0 - i * 10.0
-		var wdt = 18.0 - i * 4.0
-		var col = [Color(0.95, 0.3, 0.05), Color(1.0, 0.6, 0.15), Color(1.0, 0.92, 0.6)][i]
-		var flame = PackedVector2Array([Vector2(-wdt, -66), Vector2(wdt, -66), Vector2(sway, -66 - hgt)])
-		draw_colored_polygon(flame, col)
+		var sway = sin(time * (4.0 + i * 1.3) + i * 2.0) * (6.0 - i * 1.5)
+		var hgt = 58.0 - i * 15.0 + sin(time * 6.5 + i) * 7.0
+		var wdt = 22.0 - i * 6.0
+		var col = [Color(0.95, 0.32, 0.06), Color(1.0, 0.62, 0.18), Color(1.0, 0.93, 0.65)][i]
+		var pts = PackedVector2Array()
+		for k in 13:
+			var t = k / 12.0
+			var y = -58.0 - hgt * t
+			var w = wdt * pow(1.0 - t, 0.42) * (0.8 + 0.3 * sin(t * PI)) + sin(t * 9.0 + time * 8.0 + i) * 2.5 * t * (1.0 - t)
+			pts.append(Vector2(-w + sway * t * t, y))
+		for k in range(11, -1, -1):
+			var t = k / 12.0
+			var y = -58.0 - hgt * t
+			var w = wdt * pow(1.0 - t, 0.42) * (0.8 + 0.3 * sin(t * PI)) + sin(t * 9.0 + time * 8.0 + i) * 2.5 * t * (1.0 - t)
+			pts.append(Vector2(w + sway * t * t, y))
+		InkDraw.fill(self, pts, col)
+		if i == 0:
+			# Each side of the outer tongue as its own stroke up to the tip
+			InkDraw.stroke(self, pts.slice(0, 13), 2.4, InkDraw.INK, time)
+			var right = pts.slice(13)
+			right.reverse()
+			right.append(pts[12])
+			InkDraw.stroke(self, right, 2.4, InkDraw.INK, time + 1.0)

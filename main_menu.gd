@@ -27,6 +27,7 @@ func _ready():
 		var tex = TextureRect.new()
 		tex.texture = load("res://Menu/%s.png" % l[0])
 		tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		tex.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 		tex.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(tex)

@@ -154,12 +154,9 @@ class DoorMark:
 		queue_redraw()
 
 	func _draw():
-		var glow = Color(1.0, 0.5, 0.15)
-		for i in 5:
-			var t = float(i) / 5.0
-			var band = rect.grow_individual(0, -rect.size.y * t * (0.5 + 0.5 * dir), 0, -rect.size.y * t * (0.5 - 0.5 * dir))
-			draw_rect(band, Color(glow.r, glow.g, glow.b, 0.04))
 		var c = rect.get_center()
+		var edge = Vector2(c.x, rect.end.y if dir > 0 else rect.position.y)
+		InkDraw.glow(self, edge, rect.size.x * 0.75, Color(1.0, 0.5, 0.15, 0.22 + 0.05 * sin(time * 2.0)))
 		for k in 3:
 			var phase = fmod(time * 0.8 + k / 3.0, 1.0)
 			var y = rect.position.y + rect.size.y * (phase if dir > 0 else 1.0 - phase)
@@ -173,19 +170,57 @@ class DoorMark:
 			draw_circle(Vector2(x, y), 2.0, Color(1.0, 0.6, 0.2, sin(phase * PI)))
 
 
-# A wooden ledge: a plank with an ink edge and a couple of brackets
+# A wooden ledge, inked: boards of uneven length with seams, grain and
+# nails, a lit top edge, a darker underside and a soft shadow
 class Ledge:
 	extends Node2D
 
 	var size: Vector2
 
 	func _draw():
-		var ink = Color(0.035, 0.028, 0.045)
-		draw_rect(Rect2(Vector2.ZERO, size), Color(0.36, 0.25, 0.16))
-		draw_rect(Rect2(Vector2(0, 0), Vector2(size.x, 4)), Color(0.5, 0.36, 0.22))
-		draw_rect(Rect2(Vector2.ZERO, size), ink, false, 2.0)
-		var step = 40.0
-		var x = step * 0.5
+		var rng = RandomNumberGenerator.new()
+		rng.seed = hash(position)
+		var wood = Color(0.4, 0.28, 0.18)
+		draw_rect(Rect2(Vector2(4, size.y), Vector2(size.x - 8, 10)), Color(0, 0, 0, 0.22))
+
+		# The plank, its top edge a little uneven
+		var top = PackedVector2Array()
+		var bottom = PackedVector2Array()
+		var steps = int(size.x / 20.0) + 1
+		for i in steps + 1:
+			var x = size.x * i / steps
+			top.append(Vector2(x, rng.randf_range(-1.0, 1.0)))
+			bottom.append(Vector2(x, size.y + rng.randf_range(-0.8, 0.8)))
+		var body = top.duplicate()
+		var under = bottom.duplicate()
+		under.reverse()
+		body.append_array(under)
+		InkDraw.fill(self, body, wood)
+		var lip = top.duplicate()
+		var lip_under = PackedVector2Array()
+		for p in top:
+			lip_under.append(p + Vector2(0, 4))
+		lip_under.reverse()
+		lip.append_array(lip_under)
+		InkDraw.fill(self, lip, wood.lightened(0.28))
+
+		# Boards: seams, a grain line or two and the nails
+		var x = 0.0
 		while x < size.x:
-			draw_line(Vector2(x, size.y), Vector2(x - 6, size.y + 12), ink, 3.0)
-			x += step
+			var board = rng.randf_range(46.0, 84.0)
+			var end = min(x + board, size.x)
+			var gy = rng.randf_range(6.0, 10.0)
+			InkDraw.line(self, Vector2(x + 6, gy), Vector2(x + (end - x) * rng.randf_range(0.4, 0.8), gy + rng.randf_range(-1.0, 1.0)), 1.4, Color(InkDraw.INK, 0.55), rng.randf() * 9.0)
+			if end < size.x - 8:
+				InkDraw.line(self, Vector2(end, 1), Vector2(end + rng.randf_range(-1.5, 1.5), size.y - 1), 2.0, InkDraw.INK, rng.randf() * 9.0)
+				draw_circle(Vector2(end - 5, 7), 1.6, InkDraw.INK)
+				draw_circle(Vector2(end + 5, 7), 1.6, InkDraw.INK)
+			x = end
+
+		# The plank's darker underside, seen from a little below
+		draw_rect(Rect2(Vector2(0, size.y - 4), Vector2(size.x, 4)), wood.darkened(0.4))
+
+		InkDraw.stroke(self, top, 3.2, InkDraw.INK, position.x)
+		InkDraw.stroke(self, bottom, 3.6, InkDraw.INK, position.y)
+		InkDraw.line(self, Vector2(0, -1), Vector2(0, size.y + 1), 3.0, InkDraw.INK, 1.0)
+		InkDraw.line(self, Vector2(size.x, -1), Vector2(size.x, size.y + 1), 3.0, InkDraw.INK, 2.0)
