@@ -4,7 +4,11 @@ An ink-drawn action game made in Godot. You play Veyl, who woke in the ash at th
 
 The game has been rebuilt several times. Each version lives in its own folder and is a complete Godot project that runs on its own. **v7 is the newest.**
 
-## Play it
+## Play in your browser
+
+**[▶ Play v7 in your browser](https://noirpixels.github.io/Pyrevalley/)**. Nothing to install, and it works on Chromebooks. Use Chrome or Edge. The first load is about 45 MB. Your progress saves in that browser. Co-op only works in the desktop version.
+
+## Play it in Godot
 
 1. Install **[Godot 4.7](https://godotengine.org/download/)** (the standard build, not .NET). It's free and you don't need to install anything else.
 2. Download this repo: the green **Code** button → **Download ZIP**, then unzip it. You can also run `git clone https://github.com/noirpixels/Pyrevalley.git`.
