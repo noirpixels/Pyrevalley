@@ -21,6 +21,8 @@ const ERUPTION_HEIGHT = 340.0
 const LAUNCH_SCALE = 0.6
 const LAUNCH_REST = 4.0
 const PHASE_SHIFT_TIME = 1.6
+# How far past the arena's doorway Veyl must be for the fight to begin
+const ENGAGE_DEPTH = 220.0
 
 var attack_kind: String = "slam"
 var enraged: bool = false
@@ -64,14 +66,17 @@ func _physics_process(delta):
 	update_engagement()
 
 
-# The fight starts when Veyl comes in: the door seals behind vem
+# The fight starts once Veyl is well past the doorway, so the seal closes
+# behind vem rather than on top of vem; it ends if everyone inside falls
 func update_engagement():
 
 	if state == State.DEAD:
 		return
 	var inside = false
 	for p in get_tree().get_nodes_in_group("players"):
-		if not p.dead and room.contains(p.global_position + Vector2(0, -40)):
+		if p.dead or not room.contains(p.global_position + Vector2(0, -40)):
+			continue
+		if engaged or p.global_position.x > room.rect.position.x + ENGAGE_DEPTH:
 			inside = true
 	if inside and not engaged:
 		engaged = true
