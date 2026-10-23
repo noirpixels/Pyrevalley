@@ -11,6 +11,7 @@ const Items = preload("res://items.gd")
 
 var health_bar: InkBar
 var gear_label: Label
+var objective: Label
 var combo_label: Label
 var notice: Label
 var prompt: Label
@@ -44,9 +45,12 @@ func _ready():
 	root.add_child(top)
 	top.add_child(UI.title("VEYL", 22, UI.EMBER))
 	health_bar = InkBar.new(Vector2(300, 16), Color(0.85, 0.3, 0.08))
+	health_bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	top.add_child(health_bar)
 	gear_label = UI.label("", 16, UI.MUTED)
 	top.add_child(gear_label)
+	objective = UI.label("", 17, Color(1.0, 0.82, 0.6))
+	top.add_child(objective)
 	combo_label = UI.title("", 26, Color(1.0, 0.8, 0.35))
 	top.add_child(combo_label)
 
@@ -156,6 +160,17 @@ func refresh_gear():
 	if GameState.has_ability("cinderwing"):
 		line += "  ·  Cinderwing"
 	gear_label.text = line
+	objective.text = "◆ " + objective_text()
+
+
+# What to do next, so the way on is never a guess
+func objective_text() -> String:
+
+	if GameState.boss_defeated:
+		return "The Hollow is yours to wander."
+	if not GameState.has_ability("cinderwing"):
+		return "Find the Cinderwing, the feather of flame (M: map; arrows mark ways not yet taken)"
+	return "Leap the high wall with the Cinderwing, then face the Ashbound (marked on your map)"
 
 
 func show_combo(count: int, maximum: int):
@@ -177,8 +192,8 @@ func show_notice(text: String):
 	notice_tween.tween_property(notice, "modulate:a", 0.0, 0.8)
 
 
-func set_prompt(text: String):
-	prompt.text = ("[E]  " + text) if text != "" else ""
+func set_prompt(text: String, use_key: bool = true):
+	prompt.text = ("[E]  " + text if use_key else text) if text != "" else ""
 
 
 func banner(title: String, sub: String, hold: float = 3.5):

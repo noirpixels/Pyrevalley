@@ -34,6 +34,8 @@ const DASH_COOLDOWN = 0.4
 # Small ledges in dug ground are walked up rather than blocking
 const STEP_HEIGHT = 16.0
 const DROP_TIME = 0.25
+# Holding Down this long on a ledge drops through it too
+const DROP_HOLD = 0.25
 const HURT_INVULN = 0.7
 const PIT_DAMAGE = 15.0
 # The Mosswoven charm's mending, per second
@@ -59,6 +61,7 @@ var dash_cooldown: float = 0.0
 var dash_dir: float = 1.0
 var invuln_timer: float = 0.0
 var drop_timer: float = 0.0
+var down_held: float = 0.0
 var knockback: Vector2 = Vector2.ZERO
 var jump_held: bool = false
 # A remote Veyl eases toward where its player last said it was
@@ -220,8 +223,10 @@ func _physics_process(delta):
 		if Input.is_action_just_pressed("dash"):
 			try_dash(dir)
 
-	# Down + Jump on a ledge drops through it
-	if buffer_timer > 0.0 and on_floor and Input.is_action_pressed("move_down") and on_ledge():
+	# Down + Jump (or just holding Down) on a ledge drops through it
+	down_held = down_held + delta if on_floor and not input_blocked and Input.is_action_pressed("move_down") and dir == 0.0 else 0.0
+	if on_floor and on_ledge() and ((buffer_timer > 0.0 and Input.is_action_pressed("move_down")) or down_held > DROP_HOLD):
+		down_held = 0.0
 		buffer_timer = 0.0
 		drop_timer = DROP_TIME
 		set_collision_mask_value(2, false)

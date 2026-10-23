@@ -31,7 +31,7 @@ func _draw():
 	draw_string(Style.body_font, page.position + Vector2(28, page.size.y - 24), "Pencil: walked.  Ink: set at a shrine.   World %d   ·   M to close" % GameState.seed_value, HORIZONTAL_ALIGNMENT_LEFT, -1, 16, ink)
 
 	var here: Vector2i = game.current_room.cell if game.current_room else Vector2i.ZERO
-	var player_cell = Vector2i(floor(game.player.global_position.x / 1280.0), floor((game.player.global_position.y - 40.0) / 720.0))
+	var player_cell = Vector2i(floor(game.player.global_position.x / 1280.0), floor((game.player.global_position.y - 4.0) / 720.0))
 	var center = page.get_center() + Vector2(0, 10)
 
 	for room in game.rooms:
@@ -39,6 +39,7 @@ func _draw():
 		var keys = cells.map(func(c): return GameState.cell_key(c))
 		var seen = keys.any(func(k): return GameState.visited.has(k))
 		if not seen:
+			draw_hinted(room, center, player_cell, font)
 			continue
 		var inked = keys.any(func(k): return GameState.inked.has(k))
 		var tl = center + (Vector2(cells[0] - player_cell)) * CELL - CELL / 2.0
@@ -47,6 +48,7 @@ func _draw():
 		var col = ink if inked else Color(ink.r, ink.g, ink.b, 0.45)
 		draw_rect(r, Color(0.0, 0.0, 0.0, 0.06 if inked else 0.0))
 		draw_room_outline(r, room.data["doors"], col, 3.0 if inked else 1.6, not inked)
+		draw_unexplored_doors(game, room, r)
 		match room.data["role"]:
 			"start", "shrine":
 				draw_flame(r.get_center(), col)
@@ -57,6 +59,45 @@ func _draw():
 	var at = center + (game.player.global_position - Vector2(player_cell) * Vector2(1280, 720)) / Vector2(1280, 720) * CELL - CELL / 2.0
 	draw_circle(at, 7.0, Color(0.95, 0.4, 0.1))
 	draw_arc(at, 11.0, 0.0, TAU, 20, ink, 2.0)
+
+
+# Ember arrows on doorways that lead somewhere not yet walked
+func draw_unexplored_doors(game: Node, room: Node, r: Rect2):
+
+	var cells: Array = room.data["cells"]
+	var dirs = {"L": Vector2i(-1, 0), "R": Vector2i(1, 0), "U": Vector2i(0, -1), "D": Vector2i(0, 1)}
+	for d in room.data["doors"]:
+		var from: Vector2i = cells[-1] if d == "R" else cells[0]
+		var next: Vector2i = from + dirs[d]
+		if GameState.visited.has(GameState.cell_key(next)):
+			continue
+		var at: Vector2
+		match d:
+			"L": at = Vector2(r.position.x - 4, r.position.y + r.size.y * 0.72)
+			"R": at = Vector2(r.end.x + 4, r.position.y + r.size.y * 0.72)
+			"U": at = Vector2(r.get_center().x, r.position.y - 4)
+			"D": at = Vector2(r.get_center().x, r.end.y + 4)
+		var v = Vector2(dirs[d])
+		var side = Vector2(-v.y, v.x)
+		var pts = PackedVector2Array([at + v * 12.0, at - side * 8.0, at + side * 8.0])
+		draw_colored_polygon(pts, Color(0.95, 0.45, 0.1))
+
+
+# Rowan's directions: once the Cinderwing is found, the high wall and the
+# Ashbound's arena are sketched in faintly, even before Veyl gets there
+func draw_hinted(room: Node, center: Vector2, player_cell: Vector2i, font: Font):
+
+	if not GameState.has_ability("cinderwing") or not room.data["role"] in ["gate", "boss"]:
+		return
+	var cells: Array = room.data["cells"]
+	var tl = center + Vector2(cells[0] - player_cell) * CELL - CELL / 2.0
+	var r = Rect2(tl + Vector2(6, 6), Vector2(cells.size(), 1) * CELL - Vector2(12, 12))
+	var faint = Color(0.6, 0.2, 0.08, 0.6)
+	draw_room_outline(r, "", faint, 1.5, true)
+	var label = "the high wall" if room.data["role"] == "gate" else "the Ashbound"
+	draw_string(Style.body_font, r.position + Vector2(6, r.size.y - 8), label, HORIZONTAL_ALIGNMENT_LEFT, r.size.x - 8, 14, faint)
+	if room.data["role"] == "boss":
+		draw_string(font, r.get_center() + Vector2(-12, 6), "✕", HORIZONTAL_ALIGNMENT_LEFT, -1, 26, Color(0.6, 0.1, 0.05, 0.8))
 
 
 # The room's outline, broken where its doors are

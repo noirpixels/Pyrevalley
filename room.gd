@@ -18,6 +18,8 @@ var rect: Rect2
 var terrain: Terrain
 var markers = []        # [{"kind": char, "at": Vector2 (world)}]
 var underground: bool
+# The hatch over a way down, in world space (empty if none)
+var drop_rect: Rect2
 
 
 func setup(room: Dictionary, world_seed: int):
@@ -39,6 +41,7 @@ func setup(room: Dictionary, world_seed: int):
 
 	add_ledges(rows)
 	add_pits()
+	add_door_marks(rows)
 
 	for y in rows.size():
 		for x in rows[y].length():
@@ -98,6 +101,17 @@ func add_ledges(rows: Array):
 			x += run
 
 
+# Ways up and down glow, so they read as doorways and not just ledges
+func add_door_marks(rows: Array):
+
+	if "D" in data["doors"]:
+		var mark = DoorMark.new(Rect2(14 * TILE, 16 * TILE - 70, 4 * TILE, 70), 1.0)
+		add_child(mark)
+		drop_rect = Rect2(position + Vector2(13.5 * TILE, 15 * TILE), Vector2(5 * TILE, TILE + 10))
+	if "U" in data["doors"]:
+		add_child(DoorMark.new(Rect2(12 * TILE, 0, 8 * TILE, 70), -1.0))
+
+
 func add_pits():
 
 	for t in terrain.ember_cells:
@@ -119,6 +133,44 @@ func _on_pit_entered(body: Node):
 
 	if body.has_method("burn_in_pit"):
 		body.burn_in_pit()
+
+
+# Embers drifting through a doorway in the floor (dir 1, drifting down)
+# or the ceiling (dir -1, drifting up), with chevrons pointing the way
+class DoorMark:
+	extends Node2D
+
+	var rect: Rect2
+	var dir: float
+	var time: float = 0.0
+
+	func _init(area: Rect2, direction: float):
+		rect = area
+		dir = direction
+		z_index = 2
+
+	func _process(delta):
+		time += delta
+		queue_redraw()
+
+	func _draw():
+		var glow = Color(1.0, 0.5, 0.15)
+		for i in 5:
+			var t = float(i) / 5.0
+			var band = rect.grow_individual(0, -rect.size.y * t * (0.5 + 0.5 * dir), 0, -rect.size.y * t * (0.5 - 0.5 * dir))
+			draw_rect(band, Color(glow.r, glow.g, glow.b, 0.04))
+		var c = rect.get_center()
+		for k in 3:
+			var phase = fmod(time * 0.8 + k / 3.0, 1.0)
+			var y = rect.position.y + rect.size.y * (phase if dir > 0 else 1.0 - phase)
+			var a = sin(phase * PI) * 0.8
+			var w = 18.0
+			draw_polyline(PackedVector2Array([Vector2(c.x - w, y - 8 * dir), Vector2(c.x, y + 4 * dir), Vector2(c.x + w, y - 8 * dir)]), Color(1.0, 0.7, 0.35, a), 3.0)
+		for k in 6:
+			var phase = fmod(time * 0.5 + k * 0.17, 1.0)
+			var x = rect.position.x + rect.size.x * fmod(k * 0.37 + 0.1, 1.0)
+			var y = rect.position.y + rect.size.y * (phase if dir > 0 else 1.0 - phase)
+			draw_circle(Vector2(x, y), 2.0, Color(1.0, 0.6, 0.2, sin(phase * PI)))
 
 
 # A wooden ledge: a plank with an ink edge and a couple of brackets

@@ -185,7 +185,10 @@ func update_interaction():
 				best = node
 	interact_target = best
 	if hud:
-		hud.set_prompt(best.prompt_text() if best else "")
+		var text = best.prompt_text() if best else ""
+		if text == "" and current_room and current_room.drop_rect.has_point(player.global_position) and player.is_on_floor():
+			text = "Hold S to drop down"
+		hud.set_prompt(text, best != null)
 	if best and Input.is_action_just_pressed("interact") and not get_tree().paused:
 		best.interact(player)
 
@@ -208,7 +211,8 @@ func camera_target(_instant: bool) -> Vector2:
 
 func update_room(instant: bool):
 
-	var room = room_at(player.global_position + Vector2(0, -40))
+	# Judged at the feet: standing on the ledge just inside a room below counts
+	var room = room_at(player.global_position + Vector2(0, -4))
 	if room == null or room == current_room:
 		return
 	current_room = room
