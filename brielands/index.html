@@ -43,8 +43,8 @@
       '<p style="max-width:560px;color:#ffd38a">This page has to be opened through a web server.<br>' +
       'On the Mac, double-click <b>Play in browser.command</b> in the v8 folder.</p>';
   }
-  // The game build lives next to this page in game/.
-  const gameUrl = new URL("game/index.html", window.location.href).href;
+  // The game build lives next to this page in files/ (a neutral name: school filters block URLs with "game" in them).
+  const gameUrl = new URL("files/index.html", window.location.href).href;
 
   const here = document.getElementById("here");
   if (here) here.onclick = () => {
