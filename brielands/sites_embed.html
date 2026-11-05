@@ -42,7 +42,7 @@
   s.onerror = function () { fail("couldn't reach cdn.jsdelivr.net (is it blocked?)"); };
   s.onload = function () {
     var engine = new Engine({ args: [], canvasResizePolicy: 2, executable: BASE + "/index", focusCanvas: true,
-      fileSizes: { "index.pck": 313092, "index.wasm": 39514754 }, experimentalVK: false, gdextensionLibs: [] });
+      fileSizes: { "index.pck": 320720, "index.wasm": 39514754 }, experimentalVK: false, gdextensionLibs: [] });
     var missing = Engine.getMissingFeatures({ threads: false });
     if (missing.length) { fail("this browser is missing: " + missing.join(", ")); return; }
     engine.startGame({ onProgress: function (c, t) { if (c > 0 && t > 0) { bar.value = c; bar.max = t; } } })
