@@ -12,7 +12,7 @@
 </div>
 <script>
 (function () {
-  var REPO = "noirpixels/Pyrevalley", BAKED = "1018f4e7804eacfde053eb514c5da3dc82f461d9", BASE = "";
+  var REPO = "noirpixels/Pyrevalley", BAKED = "734cf304e681106fc36aca38b3b85357548a29b5", BASE = "";
   function base(sha) { return "https://cdn.jsdelivr.net/gh/" + REPO + "@" + sha + "/brielands/files"; }
   var msg = document.getElementById("bl-msg"), bar = document.getElementById("bl-bar");
   function fail(e) { console.error(e); msg.textContent = "Couldn't load: " + (e && e.message ? e.message : e); bar.style.display = "none"; }
@@ -43,11 +43,18 @@
   var known = BAKED;
   try { known = localStorage.getItem("brielands_sha") || BAKED; } catch (e) {}
   var done = false;
-  function go(sha) {
-    if (done) return; done = true;
+  function use(sha) {
     try { localStorage.setItem("brielands_sha", sha); } catch (e) {}
     BASE = base(sha);
     load();
+  }
+  function go(sha) {
+    if (done) return; done = true;
+    if (sha === known) { use(sha); return; }
+    // only switch to a new version once jsDelivr can actually serve it
+    fetch(base(sha) + "/index.pck", { method: "HEAD" })
+      .then(function (r) { use(r.ok ? sha : known); })
+      .catch(function () { use(known); });
   }
   setTimeout(function () { go(known); }, 3000);
   fetch("https://api.github.com/repos/" + REPO + "/commits/gh-pages", { headers: { Accept: "application/vnd.github.sha" } })
