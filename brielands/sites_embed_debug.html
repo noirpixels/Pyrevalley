@@ -1,0 +1,76 @@
+<!-- Brielands for Google Sites: Insert > Embed > Embed code, paste ALL of this. -->
+<!-- Loads the game from jsDelivr (cdn.jsdelivr.net) instead of github.io. The engine file is
+     too big for jsDelivr's 20 MB limit, so it's stored in two halves and joined here. -->
+<div id="bl" style="position:fixed;inset:0;background:#101830;margin:0">
+<canvas id="canvas" style="display:block;width:100%;height:100%;outline:none" tabindex="0"></canvas>
+<div id="bl-status" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;font:600 20px system-ui,sans-serif;background:radial-gradient(ellipse at 50% 120%,#ffb02f55,transparent 60%),linear-gradient(#1d2a50,#0c1226)">
+  <div style="font-size:56px;color:#ffc94a;text-shadow:0 4px 0 #2a1420">BRIELANDS</div>
+  <div id="bl-msg">Loading the cheese... (about 40 MB)</div>
+  <progress id="bl-bar" style="width:320px;height:14px"></progress>
+</div>
+</div>
+<script>
+(function () {
+  var BASE = "https://cdn.jsdelivr.net/gh/noirpixels/Pyrevalley@949dfedd26ee8c4c837e5d4c27e368ba65e92bfc/brielands/files";
+  var msg = document.getElementById("bl-msg"), bar = document.getElementById("bl-bar");
+  // ---- DIAGNOSTIC LOG (shows every step on screen) ----
+  var L = document.createElement("pre");
+  L.setAttribute("style", "position:fixed!important;left:8px!important;bottom:8px!important;right:8px!important;max-height:45%!important;overflow:auto!important;z-index:2147483647!important;margin:0!important;padding:8px!important;background:rgba(0,0,0,.85)!important;color:#7CFC8A!important;font:13px/1.35 monospace!important;white-space:pre-wrap!important;border:2px solid #7CFC8A!important");
+  document.documentElement.appendChild(L);
+  var T0 = Date.now();
+  function log(t) { L.textContent += "[" + ((Date.now() - T0) / 1000).toFixed(1) + "s] " + t + "\n"; L.scrollTop = 1e9; }
+  log("embed script running - " + navigator.userAgent.replace(/^.*?\) /, ""));
+  log("page: " + location.origin + " - size " + innerWidth + "x" + innerHeight);
+  try { indexedDB.open("bl-test").onsuccess = function () { log("storage (IndexedDB): ok"); }; } catch (e) { log("storage (IndexedDB) blocked: " + e.message); }
+  window.addEventListener("error", function (e) { log("ERROR: " + e.message + (e.filename ? " @ " + e.filename.split("/").pop() + ":" + e.lineno : "")); });
+  window.addEventListener("unhandledrejection", function (e) { log("PROMISE ERROR: " + (e.reason && e.reason.message ? e.reason.message : e.reason)); });
+  ["log", "warn", "error"].forEach(function (k) { var o = console[k].bind(console); console[k] = function () { log(k + ": " + Array.prototype.join.call(arguments, " ").slice(0, 300)); o.apply(null, arguments); }; });
+
+  function fail(e) { msg.textContent = "Couldn't load: " + (e && e.message ? e.message : e); bar.style.display = "none"; }
+  // Join the two halves of the engine whenever Godot asks for index.wasm.
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    var u = String(url && url.url ? url.url : url);
+    if (/index\.wasm(\?|$)/.test(u)) {
+      msg.textContent = "Loading the engine (1/2)...";
+      log("engine requested -> downloading part 1");
+      return realFetch(BASE + "/index.wasm.part1").then(function (a) {
+        log("part 1 response: HTTP " + a.status);
+        if (!a.ok) throw new Error("engine part 1: HTTP " + a.status);
+        return a.arrayBuffer();
+      }).then(function (p1) {
+        msg.textContent = "Loading the engine (2/2)...";
+        log("part 1 done (" + (p1.byteLength / 1e6).toFixed(1) + " MB) -> part 2");
+        return realFetch(BASE + "/index.wasm.part2").then(function (b) {
+          log("part 2 response: HTTP " + b.status);
+          if (!b.ok) throw new Error("engine part 2: HTTP " + b.status);
+          return b.arrayBuffer();
+        }).then(function (p2) {
+          msg.textContent = "Starting...";
+          log("part 2 done (" + (p2.byteLength / 1e6).toFixed(1) + " MB) -> starting engine");
+          var blob = new Blob([p1, p2], { type: "application/wasm" });
+          return new Response(blob, { status: 200, headers: { "Content-Type": "application/wasm", "Content-Length": String(blob.size) } });
+        });
+      });
+    }
+    log("fetch " + u.split("/").pop());
+    return realFetch(url, opts).then(function (r) { log("  " + u.split("/").pop() + ": HTTP " + r.status); return r; }, function (e) { log("  " + u.split("/").pop() + " FAILED: " + e.message); throw e; });
+  };
+  var s = document.createElement("script");
+  s.src = BASE + "/index.js";
+  log("loading index.js from jsDelivr");
+  s.onerror = function () { log("index.js FAILED to load"); fail("couldn't reach cdn.jsdelivr.net (is it blocked?)"); };
+  s.onload = function () {
+    log("index.js loaded");
+    var engine = new Engine({ args: [], canvasResizePolicy: 2, executable: BASE + "/index", focusCanvas: true,
+      fileSizes: { "index.pck": 320720, "index.wasm": 39514754 }, experimentalVK: false, gdextensionLibs: [] });
+    var missing = Engine.getMissingFeatures({ threads: false });
+    log("missing features: " + (missing.length ? missing.join(", ") : "none"));
+    if (missing.length) { fail("this browser is missing: " + missing.join(", ")); return; }
+    engine.startGame({ onProgress: function (c, t) { if (c > 0 && t > 0) { bar.value = c; bar.max = t; } } })
+      .then(function () { log("GAME STARTED"); document.getElementById("bl-status").remove(); }, function (e) { log("START FAILED: " + (e && e.message ? e.message : e)); fail(e); });
+  };
+  document.body.style.margin = "0";
+  document.body.appendChild(s);
+})();
+</script>
