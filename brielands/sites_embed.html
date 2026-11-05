@@ -1,0 +1,54 @@
+<!-- Brielands for Google Sites: Insert > Embed > Embed code, paste ALL of this. -->
+<!-- Loads the game from jsDelivr (cdn.jsdelivr.net) instead of github.io. The engine file is
+     too big for jsDelivr's 20 MB limit, so it's stored in two halves and joined here. -->
+<div id="bl" style="position:fixed;inset:0;background:#101830;margin:0">
+<canvas id="canvas" style="display:block;width:100%;height:100%;outline:none" tabindex="0"></canvas>
+<div id="bl-status" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;font:600 20px system-ui,sans-serif;background:radial-gradient(ellipse at 50% 120%,#ffb02f55,transparent 60%),linear-gradient(#1d2a50,#0c1226)">
+  <div style="font-size:56px;color:#ffc94a;text-shadow:0 4px 0 #2a1420">BRIELANDS</div>
+  <div id="bl-msg">Loading the cheese... (about 40 MB)</div>
+  <progress id="bl-bar" style="width:320px;height:14px"></progress>
+</div>
+</div>
+<script>
+(function () {
+  var BASE = "https://cdn.jsdelivr.net/gh/noirpixels/Pyrevalley@gh-pages/brielands/files";
+  var msg = document.getElementById("bl-msg"), bar = document.getElementById("bl-bar");
+  function fail(e) { console.error(e); msg.textContent = "Couldn't load: " + (e && e.message ? e.message : e); bar.style.display = "none"; }
+  // Join the two halves of the engine whenever Godot asks for index.wasm.
+  var realFetch = window.fetch.bind(window);
+  window.fetch = function (url, opts) {
+    var u = String(url && url.url ? url.url : url);
+    if (/index\.wasm(\?|$)/.test(u)) {
+      msg.textContent = "Loading the engine (1/2)...";
+      return realFetch(BASE + "/index.wasm.part1").then(function (a) {
+        if (!a.ok) throw new Error("engine part 1: HTTP " + a.status);
+        return a.arrayBuffer();
+      }).then(function (p1) {
+        msg.textContent = "Loading the engine (2/2)...";
+        return realFetch(BASE + "/index.wasm.part2").then(function (b) {
+          if (!b.ok) throw new Error("engine part 2: HTTP " + b.status);
+          return b.arrayBuffer();
+        }).then(function (p2) {
+          msg.textContent = "Starting...";
+          var blob = new Blob([p1, p2], { type: "application/wasm" });
+          return new Response(blob, { status: 200, headers: { "Content-Type": "application/wasm", "Content-Length": String(blob.size) } });
+        });
+      });
+    }
+    return realFetch(url, opts);
+  };
+  var s = document.createElement("script");
+  s.src = BASE + "/index.js";
+  s.onerror = function () { fail("couldn't reach cdn.jsdelivr.net (is it blocked?)"); };
+  s.onload = function () {
+    var engine = new Engine({ args: [], canvasResizePolicy: 2, executable: BASE + "/index", focusCanvas: true,
+      fileSizes: { "index.pck": 313092, "index.wasm": 39514754 }, experimentalVK: false, gdextensionLibs: [] });
+    var missing = Engine.getMissingFeatures({ threads: false });
+    if (missing.length) { fail("this browser is missing: " + missing.join(", ")); return; }
+    engine.startGame({ onProgress: function (c, t) { if (c > 0 && t > 0) { bar.value = c; bar.max = t; } } })
+      .then(function () { document.getElementById("bl-status").remove(); }, fail);
+  };
+  document.body.style.margin = "0";
+  document.body.appendChild(s);
+})();
+</script>
