@@ -1,6 +1,7 @@
 <!-- Brielands for Google Sites: Insert > Embed > Embed code, paste ALL of this. -->
 <!-- Loads the game from jsDelivr (cdn.jsdelivr.net) instead of github.io. The engine file is
-     too big for jsDelivr's 20 MB limit, so it's stored in two halves and joined here. -->
+     too big for jsDelivr's 20 MB limit, so it's stored in two halves and joined here.
+     It asks GitHub for the newest version; if that's blocked it uses the version baked in below. -->
 <div id="bl" style="position:fixed;inset:0;background:#101830;margin:0">
 <canvas id="canvas" style="display:block;width:100%;height:100%;outline:none" tabindex="0"></canvas>
 <div id="bl-status" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;font:600 20px system-ui,sans-serif;background:radial-gradient(ellipse at 50% 120%,#ffb02f55,transparent 60%),linear-gradient(#1d2a50,#0c1226)">
@@ -11,7 +12,8 @@
 </div>
 <script>
 (function () {
-  var BASE = "https://cdn.jsdelivr.net/gh/noirpixels/Pyrevalley@gh-pages/brielands/files";
+  var REPO = "noirpixels/Pyrevalley", BAKED = "1018f4e7804eacfde053eb514c5da3dc82f461d9", BASE = "";
+  function base(sha) { return "https://cdn.jsdelivr.net/gh/" + REPO + "@" + sha + "/brielands/files"; }
   var msg = document.getElementById("bl-msg"), bar = document.getElementById("bl-bar");
   function fail(e) { console.error(e); msg.textContent = "Couldn't load: " + (e && e.message ? e.message : e); bar.style.display = "none"; }
   // Join the two halves of the engine whenever Godot asks for index.wasm.
@@ -37,6 +39,23 @@
     }
     return realFetch(url, opts);
   };
+  // Newest version if GitHub's API answers within 3 s, else the last one we saw, else the baked one.
+  var known = BAKED;
+  try { known = localStorage.getItem("brielands_sha") || BAKED; } catch (e) {}
+  var done = false;
+  function go(sha) {
+    if (done) return; done = true;
+    try { localStorage.setItem("brielands_sha", sha); } catch (e) {}
+    BASE = base(sha);
+    load();
+  }
+  setTimeout(function () { go(known); }, 3000);
+  fetch("https://api.github.com/repos/" + REPO + "/commits/gh-pages", { headers: { Accept: "application/vnd.github.sha" } })
+    .then(function (r) { return r.ok ? r.text() : Promise.reject(r.status); })
+    .then(function (sha) { go(/^[0-9a-f]{40}$/.test(sha.trim()) ? sha.trim() : known); })
+    .catch(function () { go(known); });
+
+  function load() {
   var s = document.createElement("script");
   s.src = BASE + "/index.js";
   s.onerror = function () { fail("couldn't reach cdn.jsdelivr.net (is it blocked?)"); };
@@ -50,5 +69,6 @@
   };
   document.body.style.margin = "0";
   document.body.appendChild(s);
+  }
 })();
 </script>
